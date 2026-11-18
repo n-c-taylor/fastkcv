@@ -1,0 +1,17 @@
+.Rhistory
+.RData
+.Rproj.user
+*.tar.gz
+fastkcv.Rcheck/
+.Rproj.user/
+.Renviron
+.DS_Store
+# compiled code
+src/*.o
+src/*.so
+src/*.dll
+# pkgdown site and built vignettes
+docs/
+inst/doc/
+/doc/
+/Meta/

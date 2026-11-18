@@ -1,0 +1,29 @@
+Package: fastkcv
+Title: Fast Exact Cross-Validation for Global Kriging
+Version: 0.0.0.9000
+Authors@R: 
+    person("Nicholas", "Taylor", , "74337949+n-c-taylor@users.noreply.github.com", role = c("aut", "cre"))
+Description: Fast, exact leave-one-out and k-fold cross-validation for
+    global (unique neighbourhood) simple, ordinary and universal kriging,
+    computed from a single factorization of the covariance matrix.
+    Designed as a companion to gstat::krige.cv(), reproducing its output
+    to numerical precision.
+License: MIT + file LICENSE
+Config/roxygen2/version: 8.1.1
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Suggests: 
+    bench,
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+Imports: 
+    gstat,
+    methods,
+    sf,
+    sp,
+    stats,
+    utils
+LinkingTo: 
+    Rcpp,
+    RcppArmadillo
