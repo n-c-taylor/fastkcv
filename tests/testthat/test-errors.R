@@ -122,3 +122,53 @@ test_that("engine errors are informative", {
   expect_error(fold_inverse(matrix(c(1, 1, 1, 1), 2), 4), "Fold 4.*singular")
   expect_equal(fold_inverse(matrix(4), 1), matrix(0.25))
 })
+
+test_that("C++ engine raises the R engine's fold errors", {
+  s_xy <- withr::with_seed(5, matrix(stats::runif(40, 0, 100), ncol = 2))
+  C <- covariance_matrix(gstat::vgm(1, "Exp", 30, 0.1), s_xy)
+  F <- cbind(1, rep(c(0, 1), c(15, 5)))
+  y <- withr::with_seed(6, stats::rnorm(20))
+  # Fold 2 holds every row with F[, 2] = 1.
+  folds <- rep(c(1, 3, 2), c(8, 7, 5))
+  for (eng in list(kcv_engine, kcv_engine_r)) {
+    expect_error(eng(C, F, y, folds), "Fold 2: the trend is not identifiable")
+    expect_error(eng(C, F, y, rep(7, 20)), "Fold 7 contains every observation")
+    expect_error(eng(C, F, y, rep(7, 20), beta = c(0, 1)),
+      "Fold 7 contains every observation")
+  }
+  # Same check through the complement branch (fold larger than n / 2).
+  # Fold 2 (rows 4 to 20) leaves only rows with F[, 2] = 1.
+  folds_big <- rep(c(1, 2), c(3, 17))
+  F_big <- cbind(1, rep(c(1, 0), c(5, 15)))
+  expect_error(kcv_engine(C, F_big, y, folds_big), "Fold 2: the trend")
+  expect_error(kcv_engine_r(C, F_big, y, folds_big), "Fold 2: the trend")
+  # LOO path: a column nonzero in a single row.
+  F_loo <- cbind(1, c(1, rep(0, 19)))
+  expect_error(kcv_engine(C, F_loo, y, 20:1), "Fold 20: the trend")
+  expect_error(kcv_engine_r(C, F_loo, y, 20:1), "Fold 20: the trend")
+  # Simple kriging needs no identifiable trend.
+  expect_no_error(kcv_engine(C, F, y, folds, beta = c(0, 1)))
+  # Single observation, LOO.
+  expect_error(kcv_engine(matrix(1), matrix(1), 1, 1), "every observation")
+})
+
+test_that("C++ fold inverse detects numerically singular Q[I, I]", {
+  expect_null(fold_inverse_cpp(matrix(c(1, 1, 1, 1), 2)))
+  expect_null(fold_inverse_cpp(matrix(-1)))
+  expect_equal(fold_inverse_cpp(matrix(4)), matrix(0.25))
+  A <- matrix(c(2, 1, 1, 3), 2)
+  expect_equal(fold_inverse_cpp(A), solve(A), tolerance = tol)
+})
+
+test_that("inputs above the size limit are rejected before allocation", {
+  withr::local_options(fastkcv.max_n = 10)
+  xy <- cbind(1:11, 0)
+  C <- covariance_matrix(gstat::vgm(1, "Exp", 3, 0.1), xy)
+  expect_error(kcv_engine(C, matrix(1, 11, 1), rnorm(11), 1:11),
+    "n = 11 .*fastkcv.max_n")
+  expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse_df(), model = m_ok),
+    "n = 155 .*options\\(fastkcv.max_n = 155\\)")
+  expect_error(err_memory(1e5), "about 160 GB.*could not be allocated")
+  withr::local_options(fastkcv.max_n = 11)
+  expect_no_error(kcv_engine(C, matrix(1, 11, 1), rnorm(11), 1:11))
+})

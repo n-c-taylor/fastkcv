@@ -1,6 +1,6 @@
 #' Exact kriging cross-validation from a covariance matrix
 #'
-#' Low-level engine behind [kcv()]. Given the covariance matrix `C` of the
+#' Low-level engine behind [kcv()], implemented in C++. Given the covariance matrix `C` of the
 #' observations, the trend matrix `F` and fold assignments, it computes
 #' cross-validation predictions and variances for every fold from a single
 #' factorisation of `C`:
@@ -13,6 +13,19 @@
 #' For a fold \eqn{I}, the residual is \eqn{e_I = Q_{II}^{-1}(Qy)_I}, the
 #' prediction \eqn{y_I - e_I}, and the prediction-error variance
 #' \eqn{\mathrm{diag}(Q_{II}^{-1})}.
+#'
+#' Only the diagonal blocks \eqn{Q_{II}} are formed, never the full
+#' \eqn{n \times n} matrix \eqn{Q}. Leave-one-out (every fold of size one)
+#' uses \eqn{e_i = (Qy)_i / Q_{ii}} and \eqn{1 / Q_{ii}} directly.
+#'
+#' @section Memory:
+#' The engine needs one \eqn{n \times n} workspace in addition to `C`, so the
+#' peak memory is about \eqn{16 n^2} bytes (6.4 GB at \eqn{n = 20000}).
+#' Because operating systems often over-commit memory, an allocation that is
+#' too large may not fail cleanly; inputs with more than
+#' `getOption("fastkcv.max_n", 20000)` observations are therefore rejected up
+#' front. Set `options(fastkcv.max_n = )` to raise the limit on machines with
+#' enough memory.
 #'
 #' @param C n x n covariance matrix of the observations (positive definite).
 #' @param F n x p trend matrix (a column of ones for ordinary kriging).
@@ -34,21 +47,54 @@ kcv_engine <- function(C, F, y, folds, beta = NULL) {
   args <- check_engine_args(C, F, y, folds, beta)
   y <- args$y
   F <- args$F
+  check_size(nrow(y))
+  storage.mode(C) <- "double"
+  storage.mode(y) <- "double"
+  storage.mode(F) <- "double"
 
-  R <- tryCatch(chol(C), error = function(e) {
-    stop(
-      "The covariance matrix is not positive definite (Cholesky failed). ",
-      "This usually means duplicate or near-duplicate locations, or a ",
-      "Gaussian model without nugget; consider adding a small nugget.",
-      call. = FALSE
+  simple <- !is.null(beta)
+  labels <- sort(unique(folds))
+  fold_idx <- lapply(labels, function(f) which(folds == f) - 1L)
+  U <- if (simple) matrix(0, 0, 0) else qr.Q(qr(F))
+  res <- kcv_engine_cpp(
+    C, F, y, U, fold_idx, simple,
+    if (simple) as.double(beta) else numeric(0)
+  )
+  if (res$status != 0) {
+    f <- if (res$fold > 0) labels[res$fold] else NA
+    switch(res$status,
+      err_not_pd(),
+      err_rank_deficient(),
+      err_every_obs(f),
+      err_unidentifiable(f),
+      err_singular(f),
+      err_memory(nrow(y))
     )
-  })
+  }
+  pred <- res$pred
+  dimnames(pred) <- dimnames(y)
+  list(pred = pred, var = res$var, folds = folds)
+}
+
+#' Exact kriging cross-validation in pure R (internal oracle)
+#'
+#' The same algebra as [kcv_engine()], written with base R matrix functions
+#' and an explicit \eqn{Q}. Used to test the C++ engine.
+#'
+#' @inheritParams kcv_engine
+#' @noRd
+kcv_engine_r <- function(C, F, y, folds, beta = NULL) {
+  args <- check_engine_args(C, F, y, folds, beta)
+  y <- args$y
+  F <- args$F
+
+  R <- tryCatch(chol(C), error = function(e) err_not_pd())
   Ci <- chol2inv(R)
 
   if (is.null(beta)) {
     CiF <- Ci %*% F
     RA <- tryCatch(chol(crossprod(F, CiF)), error = function(e) {
-      stop("The trend matrix F is rank deficient.", call. = FALSE)
+      err_rank_deficient()
     })
     G <- backsolve(RA, t(CiF), transpose = TRUE)
     Q <- Ci - crossprod(G)
@@ -116,13 +162,7 @@ kcv_reference <- function(C, F, y, folds, beta = NULL) {
 # whenever the trend is identifiable without fold I (checked beforehand), so
 # failure here signals numerical singularity.
 fold_inverse <- function(Qii, f) {
-  Rq <- tryCatch(chol(Qii), error = function(e) {
-    stop(
-      "Fold ", f, ": the matrix Q[I, I] is numerically singular, so this ",
-      "fold cannot be predicted from the remaining data.",
-      call. = FALSE
-    )
-  })
+  Rq <- tryCatch(chol(Qii), error = function(e) err_singular(f))
   chol2inv(Rq)
 }
 
@@ -156,18 +196,76 @@ check_engine_args <- function(C, F, y, folds, beta) {
 check_fold_identifiable <- function(F, idx, f, simple) {
   n_left <- nrow(F) - length(idx)
   if (n_left == 0) {
-    stop("Fold ", f, " contains every observation; nothing is left to ",
-      "predict from.",
-      call. = FALSE
-    )
+    err_every_obs(f)
   }
   if (!simple && qr(F[-idx, , drop = FALSE])$rank < ncol(F)) {
-    stop(
-      "Fold ", f, ": the trend is not identifiable from the data outside ",
-      "this fold (the remaining rows of the trend matrix are rank ",
-      "deficient). Use different folds or a simpler trend.",
-      call. = FALSE
-    )
+    err_unidentifiable(f)
   }
   invisible(TRUE)
+}
+
+# Guard against inputs whose dense n x n matrices cannot reasonably be held
+# in memory. See the "Memory" section of ?kcv_engine.
+check_size <- function(n) {
+  max_n <- getOption("fastkcv.max_n", 20000)
+  if (n > max_n) {
+    err_memory(n, max_n)
+  }
+  invisible(TRUE)
+}
+
+# Error conditions shared by the C++ and R engines.
+err_not_pd <- function() {
+  stop(
+    "The covariance matrix is not positive definite (Cholesky failed). ",
+    "This usually means duplicate or near-duplicate locations, or a ",
+    "Gaussian model without nugget; consider adding a small nugget.",
+    call. = FALSE
+  )
+}
+
+err_rank_deficient <- function() {
+  stop("The trend matrix F is rank deficient.", call. = FALSE)
+}
+
+err_every_obs <- function(f) {
+  stop("Fold ", f, " contains every observation; nothing is left to ",
+    "predict from.",
+    call. = FALSE
+  )
+}
+
+err_unidentifiable <- function(f) {
+  stop(
+    "Fold ", f, ": the trend is not identifiable from the data outside ",
+    "this fold (the remaining rows of the trend matrix are rank ",
+    "deficient). Use different folds or a simpler trend.",
+    call. = FALSE
+  )
+}
+
+err_singular <- function(f) {
+  stop(
+    "Fold ", f, ": the matrix Q[I, I] is numerically singular, so this ",
+    "fold cannot be predicted from the remaining data.",
+    call. = FALSE
+  )
+}
+
+err_memory <- function(n, max_n = NULL) {
+  gb <- 16 * as.double(n)^2 / 1e9
+  stop(
+    "n = ", n, " observations need two dense n x n matrices (about ",
+    format(signif(gb, 2)), " GB)",
+    if (!is.null(max_n)) {
+      paste0(
+        ", above the limit of n = ", max_n, ". If this machine has enough ",
+        "memory, raise the limit with options(fastkcv.max_n = ", n, ")"
+      )
+    } else {
+      ", which could not be allocated"
+    },
+    ".",
+    call. = FALSE
+  )
 }

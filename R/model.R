@@ -70,9 +70,46 @@ validate_model <- function(model) {
 
 #' Covariance matrix from a gstat variogram model
 #'
+#' Builds `C[i, j] = C(s_i - s_j)` where `C(h) = total sill - gamma(h)`, in
+#' C++ (`src/covariance.cpp`) with gstat's model parameterisations. The nugget
+#' contributes only where the lag vector is exactly zero. Each component keeps
+#' its own 2D geometric anisotropy. When `coords2` is omitted the result is
+#' exactly symmetric.
+#'
+#' @param model A `variogramModel`.
+#' @param coords1 n1 x 2 coordinate matrix.
+#' @param coords2 n2 x 2 coordinate matrix; defaults to `coords1`.
+#' @return An n1 x n2 covariance matrix.
+#' @noRd
+covariance_matrix <- function(model, coords1, coords2 = NULL) {
+  validate_model(model)
+  symmetric <- is.null(coords2)
+  coords1 <- as.matrix(coords1)
+  coords2 <- if (symmetric) coords1 else as.matrix(coords2)
+  if (ncol(coords1) != 2 || ncol(coords2) != 2) {
+    stop("Coordinates must have exactly 2 columns.", call. = FALSE)
+  }
+  storage.mode(coords1) <- "double"
+  storage.mode(coords2) <- "double"
+  types <- as.character(model$model)
+  cov_matrix_cpp(
+    coords1, coords2,
+    type = match(types, supported_models) - 1L,
+    psill = as.double(model$psill),
+    range = as.double(model$range),
+    kappa = as.double(model$kappa),
+    ang1 = as.double(model$ang1),
+    anis1 = as.double(model$anis1),
+    symmetric = symmetric
+  )
+}
+
+#' Covariance matrix via gstat::variogramLine() (internal oracle)
+#'
 #' Builds `C[i, j] = C(s_i - s_j)` where `C(h) = total sill - gamma(h)`,
 #' evaluated with [gstat::variogramLine()] (`covariance = TRUE`) so that the
-#' model parameterisation is exactly gstat's. The nugget contributes only at
+#' model parameterisation is exactly gstat's. Used to test
+#' `covariance_matrix()`. The nugget contributes only at
 #' distance exactly zero. Components with 2D geometric anisotropy are handled
 #' by mapping lag vectors to gstat's reduced (isotropic) distance.
 #'
@@ -81,7 +118,7 @@ validate_model <- function(model) {
 #' @param coords2 n2 x 2 coordinate matrix; defaults to `coords1`.
 #' @return An n1 x n2 covariance matrix.
 #' @noRd
-covariance_matrix <- function(model, coords1, coords2 = coords1) {
+covariance_matrix_r <- function(model, coords1, coords2 = coords1) {
   validate_model(model)
   coords1 <- as.matrix(coords1)
   coords2 <- as.matrix(coords2)

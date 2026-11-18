@@ -66,6 +66,7 @@ kcv <- function(formula, locations, data, model, nfold, folds = NULL,
 
   inp <- parse_inputs(formula, locations, if (missing(data)) NULL else data)
   n <- nrow(inp$y)
+  check_size(n)
 
   fold <- if (!is.null(folds)) {
     if (length(folds) != n || anyNA(folds)) {

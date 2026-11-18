@@ -2,3 +2,5 @@
 
 export(kcv)
 export(kcv_engine)
+importFrom(Rcpp,sourceCpp)
+useDynLib(fastkcv, .registration = TRUE)

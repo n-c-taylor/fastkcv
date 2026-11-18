@@ -23,7 +23,7 @@ A list with \code{pred} (n x T matrix), \code{var} (length-n vector; the same
 for every column of \code{y}) and \code{folds}.
 }
 \description{
-Low-level engine behind \code{\link[=kcv]{kcv()}}. Given the covariance matrix \code{C} of the
+Low-level engine behind \code{\link[=kcv]{kcv()}}, implemented in C++. Given the covariance matrix \code{C} of the
 observations, the trend matrix \code{F} and fold assignments, it computes
 cross-validation predictions and variances for every fold from a single
 factorisation of \code{C}:
@@ -39,7 +39,22 @@ each fold): \eqn{Q = C^{-1} - C^{-1}F(F'C^{-1}F)^{-1}F'C^{-1}};
 For a fold \eqn{I}, the residual is \eqn{e_I = Q_{II}^{-1}(Qy)_I}, the
 prediction \eqn{y_I - e_I}, and the prediction-error variance
 \eqn{\mathrm{diag}(Q_{II}^{-1})}.
+
+Only the diagonal blocks \eqn{Q_{II}} are formed, never the full
+\eqn{n \times n} matrix \eqn{Q}. Leave-one-out (every fold of size one)
+uses \eqn{e_i = (Qy)_i / Q_{ii}} and \eqn{1 / Q_{ii}} directly.
 }
+\section{Memory}{
+
+The engine needs one \eqn{n \times n} workspace in addition to \code{C}, so the
+peak memory is about \eqn{16 n^2} bytes (6.4 GB at \eqn{n = 20000}).
+Because operating systems often over-commit memory, an allocation that is
+too large may not fail cleanly; inputs with more than
+\code{getOption("fastkcv.max_n", 20000)} observations are therefore rejected up
+front. Set \code{options(fastkcv.max_n = )} to raise the limit on machines with
+enough memory.
+}
+
 \examples{
 set.seed(1)
 xy <- matrix(runif(100), ncol = 2)

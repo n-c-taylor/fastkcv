@@ -67,3 +67,99 @@ test_that("cross-covariance between two coordinate sets", {
   C <- covariance_matrix(m, xy)
   expect_equal(covariance_matrix(m, xy[1:4, ], xy[5:15, ]), C[1:4, 5:15])
 })
+
+# The C++ covariance against the variogramLine() version (covariance_matrix_r)
+# for every model, nested and anisotropic case, on more points.
+xy2 <- withr::with_seed(7, matrix(stats::runif(120, 0, 800), ncol = 2))
+
+cpp_cases <- function() {
+  list(
+    Nug = gstat::vgm(0.3, "Nug", 0),
+    Exp = gstat::vgm(1, "Exp", 200),
+    Sph = gstat::vgm(1, "Sph", 400),
+    Gau = gstat::vgm(1, "Gau", 150, 0.1),
+    Mat01 = gstat::vgm(1, "Mat", 200, kappa = 0.1),
+    Mat05 = gstat::vgm(1, "Mat", 200, kappa = 0.5),
+    Mat15 = gstat::vgm(1, "Mat", 200, kappa = 1.5),
+    Mat25 = gstat::vgm(1, "Mat", 200, kappa = 2.5),
+    Mat5 = gstat::vgm(1, "Mat", 100, kappa = 5),
+    Mat10 = gstat::vgm(1, "Mat", 50, kappa = 10),
+    Ste01 = gstat::vgm(1, "Ste", 200, kappa = 0.1),
+    Ste12 = gstat::vgm(1, "Ste", 200, kappa = 1.2),
+    Ste5 = gstat::vgm(1, "Ste", 300, kappa = 5),
+    Ste10 = gstat::vgm(1, "Ste", 300, kappa = 10),
+    NugExpSph = gstat::vgm(0.5, "Sph", 500,
+      add.to = gstat::vgm(0.4, "Exp", 100, 0.1)),
+    AnisNested = gstat::vgm(0.6, "Sph", 400, anis = c(30, 0.5),
+      add.to = gstat::vgm(0.4, "Mat", 200, 0.1, kappa = 1.5,
+        anis = c(120, 0.3))),
+    AnisSte = gstat::vgm(1, "Ste", 300, 0.2, kappa = 0.8, anis = c(135, 0.4))
+  )
+}
+
+test_that("C++ covariance matches the variogramLine() version", {
+  for (nm in names(cpp_cases())) {
+    m <- cpp_cases()[[nm]]
+    expect_equal(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
+      tolerance = tol, label = nm
+    )
+    expect_equal(
+      covariance_matrix(m, xy2[1:25, ], xy2[26:60, ]),
+      covariance_matrix_r(m, xy2[1:25, ], xy2[26:60, ]),
+      tolerance = tol, label = paste(nm, "cross")
+    )
+  }
+  for (ang in c(0, 45, 90)) {
+    for (ratio in c(1, 0.5, 0.2)) {
+      for (type in c("Exp", "Sph", "Gau")) {
+        m <- gstat::vgm(1, type, 300, 0.1, anis = c(ang, ratio))
+        expect_equal(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
+          tolerance = tol, label = paste(type, ang, ratio)
+        )
+      }
+    }
+  }
+})
+
+test_that("C++ covariance is exactly symmetric with the total sill on the diagonal", {
+  m <- cpp_cases()$AnisNested
+  C <- covariance_matrix(m, xy2)
+  expect_identical(C, t(C))
+  expect_identical(diag(C), rep(sum(m$psill), nrow(xy2)))
+})
+
+test_that("cross-covariance applies the nugget only to coincident points", {
+  m <- gstat::vgm(1, "Exp", 200, 0.25)
+  K <- covariance_matrix(m, xy2[1:5, ], xy2[c(3, 10, 1), ])
+  expect_equal(K[3, 1], 1.25)
+  expect_equal(K[1, 3], 1.25)
+  expect_lt(K[2, 2], 1)
+  expect_equal(K, covariance_matrix_r(m, xy2[1:5, ], xy2[c(3, 10, 1), ]),
+    tolerance = tol)
+})
+
+test_that("Matern with large kappa stays finite where gstat returns NaN", {
+  # gstat evaluates x^kappa * K_kappa(x) directly; for kappa = 50 and small
+  # lags x^kappa underflows while K_kappa(x) overflows, giving NaN. The C++
+  # version works on the log scale.
+  m <- gstat::vgm(1, "Mat", 200, kappa = 50)
+  xy3 <- cbind(c(0, 1e-3, 0.5, 10, 150), 0)
+  C <- covariance_matrix(m, xy3)
+  expect_true(all(is.finite(C)))
+  expect_true(anyNA(covariance_matrix_r(m, xy3)))
+  x <- abs(outer(xy3[, 1], xy3[, 1], "-")) / 200
+  k <- 50
+  ref <- exp(k * log(x) - (k - 1) * log(2) - lgamma(k) +
+    log(besselK(x, k, expon.scaled = TRUE)) - x)
+  ref[x == 0] <- 1
+  # At x = 5e-6 even the scaled K_50 overflows; there C++ uses the small-x
+  # series 1 - x^2 / (4 (kappa - 1)) + ...
+  over <- !is.finite(ref)
+  expect_true(any(over))
+  ref[over] <- 1 - x[over]^2 / (4 * (k - 1))
+  expect_equal(C, ref, tolerance = tol)
+  expect_true(all(C[over] < 1))
+  # Where gstat is finite it agrees.
+  ok <- is.finite(covariance_matrix_r(m, xy3))
+  expect_equal(C[ok], covariance_matrix_r(m, xy3)[ok], tolerance = tol)
+})
