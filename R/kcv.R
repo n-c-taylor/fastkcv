@@ -27,6 +27,10 @@
 #'   precedence over `nfold`.
 #' @param beta Optional trend coefficients; if given, simple kriging with this
 #'   known trend is used.
+#' @param buffer Optional radius for buffered leave-one-out, in coordinate
+#'   units (\eqn{\ge 0}). Each observation is predicted from the observations
+#'   farther than `buffer` from it; see "Buffered leave-one-out" below.
+#'   Cannot be combined with `nfold` or `folds`.
 #' @param ... Accepted for compatibility with `krige.cv()`: `verbose` and
 #'   `debug.level` are ignored. Local-neighbourhood or block arguments
 #'   (`nmax`, `nmin`, `maxdist`, `block`) are not supported and raise an error.
@@ -36,6 +40,34 @@
 #'   `SpatialPointsDataFrame`) with columns `var1.pred`, `var1.var`,
 #'   `observed`, `residual` (observed minus predicted), `zscore` (residual
 #'   divided by the kriging standard error) and `fold`, as in `krige.cv()`.
+#'   With `buffer`, `fold` is the row number (each observation is its own
+#'   hold-out set) and a column `n_heldout` gives the number of observations
+#'   held out for it, itself included.
+#'
+#' @section Buffered leave-one-out:
+#' With `buffer = r`, observation \eqn{i} is held out together with every
+#' observation within Euclidean distance \eqn{r} of it (distance
+#' \eqn{\le r}, computed on the coordinates as given, without any variogram
+#' anisotropy), and only \eqn{i} is predicted and reported. This removes the
+#' spatially correlated neighbours that make ordinary leave-one-out
+#' optimistic. `buffer = 0` gives ordinary leave-one-out exactly.
+#'
+#' Hold-out sets of neighbouring points overlap, so each point is a separate
+#' kriging problem, solved from the same factorisation with a hold-out set
+#' \eqn{I} of size \eqn{m}. Its cost is about \eqn{m^2 n} operations (to
+#' form \eqn{Q_{II}}) plus \eqn{m^3 / 3} (to factorise it), so about
+#' \eqn{n^2 \bar m^2} in total. As \eqn{m} grows with the area of the
+#' buffer, the cost grows roughly with the fourth power of the radius at fixed
+#' \eqn{n}: radii that hold out hundreds of points at a time are expensive
+#' for large \eqn{n}. Besides the prepared factorisation, each point needs
+#' \eqn{8 m n} bytes of temporary memory (160 MB for \eqn{m = 1000},
+#' \eqn{n = 20000}). Use [kcv_prepare()] and [kcv_run()] to try several
+#' radii from one factorisation.
+#'
+#' An error names the first point that cannot be predicted: a buffer that
+#' holds out every observation, or (universal kriging) one that removes all
+#' observations that identify the trend, for example every observation of
+#' one level of a factor.
 #'
 #' @section Performance:
 #' Almost all of the time goes into one dense Cholesky factorisation and
@@ -69,10 +101,20 @@
 #' cv <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v)
 #' head(cv)
 #' sqrt(mean(cv$residual^2))
+#'
+#' # Buffered leave-one-out: neighbours within 300 m are held out too.
+#' cv_buf <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300)
+#' summary(cv_buf$n_heldout)
+#' kcv_metrics(cv_buf)
 kcv <- function(formula, locations, data, model, nfold, folds = NULL,
-                beta = NULL, ...) {
+                beta = NULL, buffer = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
   n <- nrow(inp$inp$y)
+  if (!is.null(buffer)) {
+    check_buffer_args(buffer, missing(nfold), folds)
+    p <- kcv_factor(inp$inp, inp$model, beta)
+    return(build_output(inp$inp, run_buffer_prepared(p, inp$inp$y, buffer)))
+  }
   fold <- resolve_folds(nfold, folds, n)
   p <- kcv_factor(inp$inp, inp$model, beta)
   build_output(inp$inp, run_prepared(p, inp$inp$y, fold))
@@ -106,6 +148,8 @@ kcv <- function(formula, locations, data, model, nfold, folds = NULL,
 #' set.seed(1)
 #' rmse_10fold <- replicate(5, sqrt(mean(kcv_run(p, nfold = 10)$residual^2)))
 #' rmse_10fold
+#' # Buffered leave-one-out at several radii from the same factorisation.
+#' sapply(c(0, 200, 400), function(r) kcv_metrics(kcv_run(p, buffer = r))$rmse)
 kcv_prepare <- function(formula, locations, data, model, beta = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
   kcv_factor(inp$inp, inp$model, beta)
@@ -114,7 +158,7 @@ kcv_prepare <- function(formula, locations, data, model, beta = NULL, ...) {
 #' @rdname kcv_prepare
 #' @param prepared A `kcv_prepared` object from `kcv_prepare()`.
 #' @export
-kcv_run <- function(prepared, nfold, folds = NULL) {
+kcv_run <- function(prepared, nfold, folds = NULL, buffer = NULL) {
   check_prepared(prepared)
   if (is.null(prepared$inp)) {
     stop(
@@ -124,8 +168,26 @@ kcv_run <- function(prepared, nfold, folds = NULL) {
     )
   }
   n <- nrow(prepared$inp$y)
+  if (!is.null(buffer)) {
+    check_buffer_args(buffer, missing(nfold), folds)
+    return(build_output(
+      prepared$inp,
+      run_buffer_prepared(prepared, prepared$inp$y, buffer)
+    ))
+  }
   fold <- resolve_folds(nfold, folds, n)
   build_output(prepared$inp, run_prepared(prepared, prepared$inp$y, fold))
+}
+
+check_buffer_args <- function(buffer, nfold_missing, folds) {
+  check_buffer(buffer)
+  if (!nfold_missing || !is.null(folds)) {
+    stop("`buffer` (buffered leave-one-out) cannot be combined with ",
+      "`nfold` or `folds`.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 # Argument checks and input parsing shared by kcv() and kcv_prepare().
@@ -252,6 +314,9 @@ build_output <- function(inp, res) {
     zscore = residual / sqrt(res$var),
     fold = res$folds
   )
+  if (!is.null(res$n_heldout)) {
+    out$n_heldout <- res$n_heldout
+  }
   switch(inp$kind,
     data.frame = {
       cc <- as.data.frame(inp$coords)

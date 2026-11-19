@@ -14,60 +14,9 @@ parse_inputs <- function(formula, locations, data) {
     )
   }
 
-  if (inherits(locations, "formula")) {
-    if (!is.data.frame(data)) {
-      stop("When `locations` is a formula, `data` must be a data.frame.",
-        call. = FALSE
-      )
-    }
-    kind <- "data.frame"
-    coords <- as.matrix(stats::model.frame(locations, data, na.action = stats::na.pass))
-    df <- as.data.frame(data)
-  } else if (inherits(locations, "sf")) {
-    kind <- "sf"
-    geom_type <- unique(as.character(sf::st_geometry_type(locations)))
-    if (!identical(geom_type, "POINT")) {
-      stop("`locations` (sf) must contain POINT geometries only.", call. = FALSE)
-    }
-    if (isTRUE(sf::st_is_longlat(locations))) {
-      stop(lonlat_message(), call. = FALSE)
-    }
-    coords <- sf::st_coordinates(locations)
-    df <- sf::st_drop_geometry(locations)
-  } else if (inherits(locations, "Spatial")) {
-    kind <- "sp"
-    if (identical(sp::is.projected(locations), FALSE)) {
-      stop(lonlat_message(), call. = FALSE)
-    }
-    if (!methods::.hasSlot(locations, "data")) {
-      stop("`locations` (sp) must be a Spatial*DataFrame holding the variables.",
-        call. = FALSE
-      )
-    }
-    coords <- sp::coordinates(locations)
-    # as.data.frame() of an sp object includes the coordinate columns, as in
-    # gstat, so formulas such as z ~ x + y work.
-    df <- as.data.frame(locations)
-  } else {
-    stop(
-      "`locations` must be a formula (with a data.frame in `data`), ",
-      "an sf object, or an sp Spatial*DataFrame.",
-      call. = FALSE
-    )
-  }
-
-  if (ncol(coords) != 2) {
-    stop("fastkcv supports 2D coordinates only; got ", ncol(coords),
-      " coordinate columns.",
-      call. = FALSE
-    )
-  }
-  coord_names <- colnames(coords)
-  coords <- unname(as.matrix(coords))
-  storage.mode(coords) <- "double"
-  if (anyNA(coords)) {
-    stop("Coordinates contain missing values.", call. = FALSE)
-  }
+  cc <- parse_coords(locations, data, matrix_ok = FALSE, need_data = TRUE)
+  coords <- cc$coords
+  df <- cc$df
   if (anyDuplicated(coords) > 0) {
     dup <- which(duplicated(coords))
     stop(
@@ -102,9 +51,9 @@ parse_inputs <- function(formula, locations, data) {
     y = matrix(as.numeric(y), ncol = 1),
     F = F,
     coords = coords,
-    coord_names = coord_names,
-    kind = kind,
-    locations = if (kind == "data.frame") NULL else locations
+    coord_names = cc$coord_names,
+    kind = cc$kind,
+    locations = if (cc$kind == "data.frame") NULL else locations
   )
 }
 
@@ -114,4 +63,81 @@ lonlat_message <- function() {
     "fastkcv: gstat uses great-circle distances for them. Project the ",
     "data first, e.g. with sf::st_transform()."
   )
+}
+
+#' Coordinates of the observations
+#'
+#' Shared by `parse_inputs()` and the fold builders.
+#'
+#' @param matrix_ok Accept a numeric two-column coordinate matrix.
+#' @param need_data For sp input, require a `Spatial*DataFrame`.
+#' @return A list with `coords` (unnamed n x 2 double matrix), `coord_names`,
+#'   `kind` ("data.frame", "sf", "sp" or "matrix") and `df` (the attribute
+#'   table, `NULL` for a matrix).
+#' @noRd
+parse_coords <- function(locations, data, matrix_ok = FALSE,
+                         need_data = TRUE) {
+  df <- NULL
+  if (inherits(locations, "formula")) {
+    if (!is.data.frame(data)) {
+      stop("When `locations` is a formula, `data` must be a data.frame.",
+        call. = FALSE
+      )
+    }
+    kind <- "data.frame"
+    coords <- as.matrix(stats::model.frame(locations, data,
+      na.action = stats::na.pass
+    ))
+    df <- as.data.frame(data)
+  } else if (inherits(locations, "sf")) {
+    kind <- "sf"
+    geom_type <- unique(as.character(sf::st_geometry_type(locations)))
+    if (!identical(geom_type, "POINT")) {
+      stop("`locations` (sf) must contain POINT geometries only.", call. = FALSE)
+    }
+    if (isTRUE(sf::st_is_longlat(locations))) {
+      stop(lonlat_message(), call. = FALSE)
+    }
+    coords <- sf::st_coordinates(locations)
+    df <- sf::st_drop_geometry(locations)
+  } else if (inherits(locations, "Spatial")) {
+    kind <- "sp"
+    if (identical(sp::is.projected(locations), FALSE)) {
+      stop(lonlat_message(), call. = FALSE)
+    }
+    has_data <- methods::.hasSlot(locations, "data")
+    if (need_data && !has_data) {
+      stop("`locations` (sp) must be a Spatial*DataFrame holding the variables.",
+        call. = FALSE
+      )
+    }
+    coords <- sp::coordinates(locations)
+    # as.data.frame() of an sp object includes the coordinate columns, as in
+    # gstat, so formulas such as z ~ x + y work.
+    if (has_data) df <- as.data.frame(locations)
+  } else if (matrix_ok && is.matrix(locations) && is.numeric(locations)) {
+    kind <- "matrix"
+    coords <- locations
+  } else {
+    stop(
+      "`locations` must be a formula (with a data.frame in `data`), ",
+      if (matrix_ok) "a numeric two-column coordinate matrix, " else "",
+      "an sf object, or an sp Spatial*DataFrame.",
+      call. = FALSE
+    )
+  }
+
+  if (ncol(coords) != 2) {
+    stop("fastkcv supports 2D coordinates only; got ", ncol(coords),
+      " coordinate columns.",
+      call. = FALSE
+    )
+  }
+  coord_names <- colnames(coords)
+  coords <- unname(as.matrix(coords))
+  storage.mode(coords) <- "double"
+  if (anyNA(coords) || any(!is.finite(coords))) {
+    stop("Coordinates contain missing or non-finite values.", call. = FALSE)
+  }
+  list(coords = coords, coord_names = coord_names, kind = kind, df = df)
 }

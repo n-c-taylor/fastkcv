@@ -7,7 +7,7 @@
 \usage{
 kcv_prepare(formula, locations, data, model, beta = NULL, ...)
 
-kcv_run(prepared, nfold, folds = NULL)
+kcv_run(prepared, nfold, folds = NULL, buffer = NULL)
 }
 \arguments{
 \item{formula}{Formula defining the response and the trend, e.g.
@@ -37,6 +37,11 @@ folds); or a vector of length \code{n} of fold identifiers.}
 
 \item{folds}{Optional vector of length \code{n} of fold identifiers. Takes
 precedence over \code{nfold}.}
+
+\item{buffer}{Optional radius for buffered leave-one-out, in coordinate
+units (\eqn{\ge 0}). Each observation is predicted from the observations
+farther than \code{buffer} from it; see "Buffered leave-one-out" below.
+Cannot be combined with \code{nfold} or \code{folds}.}
 }
 \value{
 \code{kcv_prepare()}: a \code{kcv_prepared} object. \code{kcv_run()}: the same
@@ -63,6 +68,8 @@ loo <- kcv_run(p)
 set.seed(1)
 rmse_10fold <- replicate(5, sqrt(mean(kcv_run(p, nfold = 10)$residual^2)))
 rmse_10fold
+# Buffered leave-one-out at several radii from the same factorisation.
+sapply(c(0, 200, 400), function(r) kcv_metrics(kcv_run(p, buffer = r))$rmse)
 }
 \seealso{
 \code{\link[=kcv_engine_prepare]{kcv_engine_prepare()}} for a precomputed covariance matrix; the

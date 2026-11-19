@@ -17,6 +17,14 @@ run_cpp <- function(Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta) {
     .Call(`_fastkcv_run_cpp`, Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta)
 }
 
+run_buffer_cpp <- function(Wr, B, S, G, U, qdiag, F, Y, coords, radius, simple, beta) {
+    .Call(`_fastkcv_run_buffer_cpp`, Wr, B, S, G, U, qdiag, F, Y, coords, radius, simple, beta)
+}
+
+buffer_solve_cpp <- function(Qii, pos) {
+    .Call(`_fastkcv_buffer_solve_cpp`, Qii, pos)
+}
+
 fold_inverse_cpp <- function(Qii) {
     .Call(`_fastkcv_fold_inverse_cpp`, Qii)
 }

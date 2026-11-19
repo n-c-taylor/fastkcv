@@ -1,9 +1,12 @@
 # Benchmark: kcv() (C++ engine) vs the pure-R engine vs gstat::krige.cv(),
-# global ordinary kriging, leave-one-out and 5/10/25-fold.
+# global ordinary kriging, leave-one-out and 5/10/25-fold; buffered
+# leave-one-out at several radii vs a gstat::krige() loop on the remaining
+# data; random, block and k-means folds side by side.
 #
 # Install the package first so the compiled code is optimised
-# (devtools::load_all() compiles without optimisation):
-#   R CMD INSTALL .
+# (devtools::load_all() compiles without optimisation, and an in-place
+# install reuses its object files):
+#   rm -f src/*.o src/*.so && R CMD INSTALL --preclean .
 #   Rscript inst/bench/bench-krige-cv.R
 # On Debian/Ubuntu with several BLAS libraries installed, a particular one
 # can be selected for a single run through R_LD_LIBRARY_PATH (R prepends it
@@ -121,6 +124,78 @@ for (ds in datasets[-(1:2)]) {
     runs_s = signif(t_run, 3),
     speedup = round(t_kcv / (t_prep + t_run), 1)
   )
+}
+cat("\n")
+print(do.call(rbind, rows), row.names = FALSE)
+
+# Buffered leave-one-out: each point is held out with every point within
+# `radius` and predicted from the rest. One kcv_prepare() serves all radii.
+# Per point the cost is about m^2 n + m^3 / 3 for a hold-out set of size m,
+# so it grows quickly with the radius. The gstat comparison refits
+# gstat::krige() once per point on the remaining data (n = 1000 only).
+buffer_radii <- list(`1000` = c(0, 25, 50, 100, 200), `5000` = c(0, 25, 50, 100))
+rows <- list()
+for (ds in datasets[c(2, 4)]) {
+  n <- nrow(ds$data)
+  p <- kcv_prepare(ds$formula, ~ x + y, ds$data, model = ds$model)
+  for (r in buffer_radii[[as.character(n)]]) {
+    cat(sprintf("n = %d, buffer = %g ...\n", n, r))
+    t_run <- system.time(out <- kcv_run(p, buffer = r))[["elapsed"]]
+    t_gstat <- NA_real_
+    max_diff <- NA_real_
+    if (n <= 1000) {
+      sets <- fastkcv:::buffer_sets_r(as.matrix(ds$data[, c("x", "y")]), r)
+      t_gstat <- system.time(ref <- t(vapply(seq_len(n), function(i) {
+        k <- krige(ds$formula, ~ x + y, ds$data[-sets[[i]], ], ds$data[i, ],
+          model = ds$model, debug.level = 0
+        )
+        c(k$var1.pred, k$var1.var)
+      }, numeric(2))))[["elapsed"]]
+      max_diff <- max(abs(out$var1.pred - ref[, 1]), abs(out$var1.var - ref[, 2]))
+    }
+    rows[[length(rows) + 1]] <- data.frame(
+      n = n, radius = r,
+      mean_heldout = round(mean(out$n_heldout), 1),
+      max_heldout = max(out$n_heldout),
+      kcv_run_s = signif(t_run, 3),
+      krige_loop_s = signif(t_gstat, 3),
+      `krige/kcv` = round(t_gstat / t_run, 1),
+      max_abs_diff = signif(max_diff, 2),
+      rmse = signif(kcv_metrics(out)$rmse, 4),
+      check.names = FALSE
+    )
+  }
+}
+cat("\n")
+print(do.call(rbind, rows), row.names = FALSE)
+cat("(n = 5000, radius 200 is not run: about 630 points per hold-out set.)\n")
+
+# Fold designs from one factorisation: random, 5 x 5 grid blocks, and
+# k-means clusters.
+rows <- list()
+for (ds in datasets[c(2, 4)]) {
+  n <- nrow(ds$data)
+  p <- kcv_prepare(ds$formula, ~ x + y, ds$data, model = ds$model)
+  designs <- list(
+    `random k = 10` = fold_random(~ x + y, ds$data, k = 10),
+    `random k = 25` = fold_random(~ x + y, ds$data, k = 25),
+    `blocks 5 x 5` = fold_blocks(~ x + y, ds$data, blocks = 5),
+    `blocks 5 x 5, k = 5` = fold_blocks(~ x + y, ds$data, blocks = 5, k = 5),
+    `kmeans k = 10` = fold_kmeans(~ x + y, ds$data, k = 10),
+    `kmeans k = 25` = fold_kmeans(~ x + y, ds$data, k = 25)
+  )
+  for (nm in names(designs)) {
+    f <- designs[[nm]]
+    t_run <- system.time(out <- kcv_run(p, folds = f))[["elapsed"]]
+    m <- kcv_metrics(out)
+    rows[[length(rows) + 1]] <- data.frame(
+      n = n, design = nm, folds = length(unique(f)),
+      largest_fold = max(table(f)),
+      kcv_run_s = signif(t_run, 3),
+      rmse = signif(m$rmse, 4), var_z = signif(m$var_z, 3),
+      coverage_90 = round(m$coverage_90, 3)
+    )
+  }
 }
 cat("\n")
 print(do.call(rbind, rows), row.names = FALSE)

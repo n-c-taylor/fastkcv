@@ -83,6 +83,40 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// run_buffer_cpp
+Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B, const arma::mat& S, const arma::mat& G, const arma::mat& U, const arma::vec& qdiag, const arma::mat& F, const arma::mat& Y, const arma::mat& coords, double radius, bool simple, const arma::vec& beta);
+RcppExport SEXP _fastkcv_run_buffer_cpp(SEXP WrSEXP, SEXP BSEXP, SEXP SSEXP, SEXP GSEXP, SEXP USEXP, SEXP qdiagSEXP, SEXP FSEXP, SEXP YSEXP, SEXP coordsSEXP, SEXP radiusSEXP, SEXP simpleSEXP, SEXP betaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Wr(WrSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type B(BSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type S(SSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type G(GSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type U(USEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type qdiag(qdiagSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type F(FSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type coords(coordsSEXP);
+    Rcpp::traits::input_parameter< double >::type radius(radiusSEXP);
+    Rcpp::traits::input_parameter< bool >::type simple(simpleSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type beta(betaSEXP);
+    rcpp_result_gen = Rcpp::wrap(run_buffer_cpp(Wr, B, S, G, U, qdiag, F, Y, coords, radius, simple, beta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// buffer_solve_cpp
+SEXP buffer_solve_cpp(const arma::mat& Qii, int pos);
+RcppExport SEXP _fastkcv_buffer_solve_cpp(SEXP QiiSEXP, SEXP posSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type Qii(QiiSEXP);
+    Rcpp::traits::input_parameter< int >::type pos(posSEXP);
+    rcpp_result_gen = Rcpp::wrap(buffer_solve_cpp(Qii, pos));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fold_inverse_cpp
 SEXP fold_inverse_cpp(const arma::mat& Qii);
 RcppExport SEXP _fastkcv_fold_inverse_cpp(SEXP QiiSEXP) {
@@ -100,6 +134,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fastkcv_prepare_model_cpp", (DL_FUNC) &_fastkcv_prepare_model_cpp, 9},
     {"_fastkcv_prepare_matrix_cpp", (DL_FUNC) &_fastkcv_prepare_matrix_cpp, 3},
     {"_fastkcv_run_cpp", (DL_FUNC) &_fastkcv_run_cpp, 11},
+    {"_fastkcv_run_buffer_cpp", (DL_FUNC) &_fastkcv_run_buffer_cpp, 12},
+    {"_fastkcv_buffer_solve_cpp", (DL_FUNC) &_fastkcv_buffer_solve_cpp, 2},
     {"_fastkcv_fold_inverse_cpp", (DL_FUNC) &_fastkcv_fold_inverse_cpp, 1},
     {NULL, NULL, 0}
 };

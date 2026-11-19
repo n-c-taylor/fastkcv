@@ -4,7 +4,17 @@
 \alias{kcv}
 \title{Fast exact cross-validation for global kriging}
 \usage{
-kcv(formula, locations, data, model, nfold, folds = NULL, beta = NULL, ...)
+kcv(
+  formula,
+  locations,
+  data,
+  model,
+  nfold,
+  folds = NULL,
+  beta = NULL,
+  buffer = NULL,
+  ...
+)
 }
 \arguments{
 \item{formula}{Formula defining the response and the trend, e.g.
@@ -31,6 +41,11 @@ precedence over \code{nfold}.}
 \item{beta}{Optional trend coefficients; if given, simple kriging with this
 known trend is used.}
 
+\item{buffer}{Optional radius for buffered leave-one-out, in coordinate
+units (\eqn{\ge 0}). Each observation is predicted from the observations
+farther than \code{buffer} from it; see "Buffered leave-one-out" below.
+Cannot be combined with \code{nfold} or \code{folds}.}
+
 \item{...}{Accepted for compatibility with \code{krige.cv()}: \code{verbose} and
 \code{debug.level} are ignored. Local-neighbourhood or block arguments
 (\code{nmax}, \code{nmin}, \code{maxdist}, \code{block}) are not supported and raise an error.}
@@ -41,6 +56,9 @@ coordinate columns appended, an \code{sf} object, or an \code{sp}
 \code{SpatialPointsDataFrame}) with columns \code{var1.pred}, \code{var1.var},
 \code{observed}, \code{residual} (observed minus predicted), \code{zscore} (residual
 divided by the kriging standard error) and \code{fold}, as in \code{krige.cv()}.
+With \code{buffer}, \code{fold} is the row number (each observation is its own
+hold-out set) and a column \code{n_heldout} gives the number of observations
+held out for it, itself included.
 }
 \description{
 A drop-in companion to \code{\link[gstat:krige.cv]{gstat::krige.cv()}} for global kriging (every
@@ -54,6 +72,33 @@ Ordinary kriging (\code{formula = z ~ 1}) and universal kriging (\code{z ~ x + y
 external drift, ...) re-estimate the trend by generalised least squares in
 each fold, as gstat does. Simple kriging is used when \code{beta} is supplied.
 }
+\section{Buffered leave-one-out}{
+
+With \code{buffer = r}, observation \eqn{i} is held out together with every
+observation within Euclidean distance \eqn{r} of it (distance
+\eqn{\le r}, computed on the coordinates as given, without any variogram
+anisotropy), and only \eqn{i} is predicted and reported. This removes the
+spatially correlated neighbours that make ordinary leave-one-out
+optimistic. \code{buffer = 0} gives ordinary leave-one-out exactly.
+
+Hold-out sets of neighbouring points overlap, so each point is a separate
+kriging problem, solved from the same factorisation with a hold-out set
+\eqn{I} of size \eqn{m}. Its cost is about \eqn{m^2 n} operations (to
+form \eqn{Q_{II}}) plus \eqn{m^3 / 3} (to factorise it), so about
+\eqn{n^2 \bar m^2} in total. As \eqn{m} grows with the area of the
+buffer, the cost grows roughly with the fourth power of the radius at fixed
+\eqn{n}: radii that hold out hundreds of points at a time are expensive
+for large \eqn{n}. Besides the prepared factorisation, each point needs
+\eqn{8 m n} bytes of temporary memory (160 MB for \eqn{m = 1000},
+\eqn{n = 20000}). Use \code{\link[=kcv_prepare]{kcv_prepare()}} and \code{\link[=kcv_run]{kcv_run()}} to try several
+radii from one factorisation.
+
+An error names the first point that cannot be predicted: a buffer that
+holds out every observation, or (universal kriging) one that removes all
+observations that identify the trend, for example every observation of
+one level of a factor.
+}
+
 \section{Performance}{
 
 Almost all of the time goes into one dense Cholesky factorisation and
@@ -89,4 +134,9 @@ v <- gstat::vgm(0.59, "Sph", 897, 0.05)
 cv <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v)
 head(cv)
 sqrt(mean(cv$residual^2))
+
+# Buffered leave-one-out: neighbours within 300 m are held out too.
+cv_buf <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300)
+summary(cv_buf$n_heldout)
+kcv_metrics(cv_buf)
 }

@@ -12,7 +12,9 @@
 // fold schemes and responses:
 //   prepare: W (overwriting a single n x n buffer), B, S, G and the diagonal
 //            of Q used by leave-one-out;
-//   run:     Qy and the per-fold solves.
+//   run:     Qy and the per-fold solves (run_cpp() for a partition into
+//            folds, run_buffer_cpp() for buffered leave-one-out, where the
+//            hold-out sets overlap and only one point per set is scored).
 //
 // Errors are returned as a status code (and the position of the offending
 // fold) so that the R wrapper raises exactly the same conditions as the R
@@ -22,6 +24,10 @@
 //   3 fold contains every observation 6 out of memory
 
 #include <RcppArmadillo.h>
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 #include "covariance.h"
 #include "lapack.h"
@@ -35,6 +41,12 @@ const double ident_tol = 1e-12;
 Rcpp::List fail(int status, int fold) {
   return Rcpp::List::create(Rcpp::Named("status") = status,
                             Rcpp::Named("fold") = fold);
+}
+
+Rcpp::List fail_buffer(int status, arma::uword i, arma::uword m) {
+  return Rcpp::List::create(Rcpp::Named("status") = status,
+                            Rcpp::Named("fold") = int(i + 1),
+                            Rcpp::Named("size") = int(m));
 }
 
 // Inverse of a small symmetric positive definite matrix through its
@@ -70,6 +82,33 @@ bool identifiable(const arma::mat& U, const arma::uvec& idx) {
   }
   arma::vec ev = arma::eig_sym(arma::symmatu(Gm));
   return ev.min() >= ident_tol;
+}
+
+// Q y for ordinary/universal kriging, Q (y - F beta) for simple kriging.
+arma::mat compute_Qy(const arma::mat& W, const arma::mat& B,
+                     const arma::mat& S, const arma::mat& G,
+                     const arma::mat& F, const arma::mat& Y, bool simple,
+                     const arma::vec& beta) {
+  if (simple) {
+    arma::mat Yt = Y;
+    Yt.each_col() -= F * beta;
+    return W * (W.t() * Yt);
+  }
+  arma::mat Z = W.t() * Y;
+  return W * Z - G.t() * arma::solve(arma::trimatl(S.t()), B.t() * Z);
+}
+
+// Solves Q[I, I] x = e_pos through the Cholesky factor of Q[I, I], giving
+// the row of Q[I, I]^{-1} for the scored point; false if the factorisation
+// fails.
+bool solve_unit(const arma::mat& Qii, arma::uword pos, arma::vec& x) {
+  arma::mat Rq;
+  if (!arma::chol(Rq, arma::symmatu(Qii))) return false;
+  arma::vec e(Qii.n_rows, arma::fill::zeros);
+  e[pos] = 1.0;
+  arma::vec z = arma::solve(arma::trimatl(Rq.t()), e);
+  x = arma::solve(arma::trimatu(Rq), z);
+  return true;
 }
 
 // Factorises the covariance matrix held in `Wr` in place (Wr <- R^{-1}) and
@@ -158,15 +197,7 @@ Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
     const int nf = fold_idx.size();
     const arma::mat W(const_cast<double*>(Wr.begin()), n, n, false, true);
 
-    arma::mat Qy;
-    if (simple) {
-      arma::mat Yt = Y;
-      Yt.each_col() -= F * beta;
-      Qy = W * (W.t() * Yt);
-    } else {
-      arma::mat Z = W.t() * Y;
-      Qy = W * Z - G.t() * arma::solve(arma::trimatl(S.t()), B.t() * Z);
-    }
+    const arma::mat Qy = compute_Qy(W, B, S, G, F, Y, simple, beta);
 
     arma::mat pred(n, T);
     arma::vec var(n);
@@ -214,6 +245,105 @@ Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
   } catch (std::bad_alloc&) {
     return fail(6, 0);
   }
+}
+
+// Buffered leave-one-out: for every point i, the hold-out set is
+// I = {j : ||s_j - s_i|| <= radius} (Euclidean distance on the coordinates)
+// and only point i is scored. The sets overlap, so this is not a partition
+// and cannot go through run_cpp(). Neighbours are found on the fly from the
+// points sorted by x, so no neighbour lists are stored. A set of size one
+// uses the leave-one-out formulas, so radius 0 reproduces run_cpp() exactly.
+// On failure, `fold` is the 1-based point and `size` the size of its set.
+// [[Rcpp::export]]
+Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
+                          const arma::mat& S, const arma::mat& G,
+                          const arma::mat& U, const arma::vec& qdiag,
+                          const arma::mat& F, const arma::mat& Y,
+                          const arma::mat& coords, double radius,
+                          bool simple, const arma::vec& beta) {
+  try {
+    const arma::uword n = Wr.nrow();
+    const arma::uword T = Y.n_cols;
+    const arma::mat W(const_cast<double*>(Wr.begin()), n, n, false, true);
+    const arma::mat Qy = compute_Qy(W, B, S, G, F, Y, simple, beta);
+
+    arma::vec lev;
+    if (!simple) lev = arma::sum(arma::square(U), 1);
+    const arma::vec x = coords.col(0), y = coords.col(1);
+    const arma::uvec ord = arma::sort_index(x);
+    const arma::vec xs = x.elem(ord);
+
+    arma::mat pred(n, T);
+    arma::vec var(n), size(n);
+    std::vector<arma::uword> members;
+    for (arma::uword i = 0; i < n; ++i) {
+      // Points with x in [x_i - radius, x_i + radius], then the distance test.
+      const double* lo =
+          std::lower_bound(xs.begin(), xs.end(), x[i] - radius);
+      const double* hi =
+          std::upper_bound(xs.begin(), xs.end(), x[i] + radius);
+      members.clear();
+      for (arma::uword k = lo - xs.begin(); k < arma::uword(hi - xs.begin());
+           ++k) {
+        const arma::uword j = ord[k];
+        const double dx = x[j] - x[i], dy = y[j] - y[i];
+        if (j == i || std::sqrt(dx * dx + dy * dy) <= radius) {
+          members.push_back(j);
+        }
+      }
+      std::sort(members.begin(), members.end());
+      const arma::uword m = members.size();
+      size[i] = m;
+
+      if (m == n) return fail_buffer(3, i, m);
+      if (m == 1) {
+        if (!simple && 1.0 - lev[i] < ident_tol) return fail_buffer(4, i, m);
+        if (!(qdiag[i] > 0.0) || !std::isfinite(qdiag[i])) {
+          return fail_buffer(5, i, m);
+        }
+        var[i] = 1.0 / qdiag[i];
+        pred.row(i) = Y.row(i) - Qy.row(i) / qdiag[i];
+        continue;
+      }
+
+      arma::uvec idx(m);
+      arma::uword pos = 0;
+      for (arma::uword a = 0; a < m; ++a) {
+        idx[a] = members[a];
+        if (members[a] == i) pos = a;
+      }
+      if (!simple && !identifiable(U, idx)) return fail_buffer(4, i, m);
+      // Row idx[a] of the upper triangular W is zero left of column idx[a],
+      // so columns before min(idx) = idx[0] contribute nothing.
+      arma::mat Wi = W.submat(idx, arma::regspace<arma::uvec>(idx[0], n - 1));
+      arma::mat Qii = Wi * Wi.t();
+      if (!simple) {
+        arma::mat Gi = G.cols(idx);
+        Qii -= Gi.t() * Gi;
+      }
+      arma::vec v;
+      if (!solve_unit(Qii, pos, v)) return fail_buffer(5, i, m);
+      var[i] = v[pos];
+      pred.row(i) = Y.row(i) - v.t() * Qy.rows(idx);
+      if (i % 64 == 0) Rcpp::checkUserInterrupt();
+    }
+    return Rcpp::List::create(
+        Rcpp::Named("status") = 0, Rcpp::Named("pred") = pred,
+        Rcpp::Named("var") = Rcpp::NumericVector(var.begin(), var.end()),
+        Rcpp::Named("size") = Rcpp::IntegerVector(size.begin(), size.end()));
+  } catch (std::bad_alloc&) {
+    return fail(6, 0);
+  }
+}
+
+// Test hook for the numerically singular Q[I, I] branch of
+// run_buffer_cpp(): the row of Q[I, I]^{-1} for position `pos` (0-based),
+// or NULL.
+// [[Rcpp::export]]
+SEXP buffer_solve_cpp(const arma::mat& Qii, int pos) {
+  arma::vec x;
+  if (!solve_unit(Qii, pos, x)) return R_NilValue;
+  return Rcpp::wrap(x);
 }
 
 // Test hook for the numerically singular Q[I, I] branch.

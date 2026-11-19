@@ -143,6 +143,35 @@ new_prepared <- function(res, F, beta, inp, matrices) {
   )
 }
 
+# Buffered leave-one-out from a prepared factorisation: point i is predicted
+# from the observations farther than `radius` from it.
+run_buffer_prepared <- function(p, y, radius) {
+  storage.mode(y) <- "double"
+  simple <- !is.null(p$beta)
+  res <- run_buffer_cpp(
+    p$W, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, p$inp$coords,
+    as.double(radius), simple, if (simple) p$beta else numeric(0)
+  )
+  if (res$status != 0) {
+    raise_buffer_status(res$status, res$fold, res$size, radius, nrow(y))
+  }
+  pred <- res$pred
+  dimnames(pred) <- dimnames(y)
+  list(pred = pred, var = res$var, folds = seq_len(nrow(y)),
+    n_heldout = res$size)
+}
+
+check_buffer <- function(buffer) {
+  if (!is.numeric(buffer) || length(buffer) != 1 || is.na(buffer) ||
+    !is.finite(buffer) || buffer < 0) {
+    stop("`buffer` must be a single non-negative number (a radius in ",
+      "coordinate units).",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 # Cross-validates one fold scheme from a prepared factorisation.
 run_prepared <- function(p, y, folds) {
   storage.mode(y) <- "double"
@@ -206,21 +235,9 @@ kcv_engine_r <- function(C, F, y, folds, beta = NULL) {
   y <- args$y
   F <- args$F
 
-  R <- tryCatch(chol(C), error = function(e) err_not_pd())
-  Ci <- chol2inv(R)
-
-  if (is.null(beta)) {
-    CiF <- Ci %*% F
-    RA <- tryCatch(chol(crossprod(F, CiF)), error = function(e) {
-      err_rank_deficient()
-    })
-    G <- backsolve(RA, t(CiF), transpose = TRUE)
-    Q <- Ci - crossprod(G)
-  } else {
-    Q <- Ci
-    y_tilde <- y - drop(F %*% beta)
-  }
-  Qy <- Q %*% (if (is.null(beta)) y else y_tilde)
+  qp <- q_parts_r(C, F, y, beta)
+  Q <- qp$Q
+  Qy <- qp$Qy
 
   n <- nrow(y)
   pred <- matrix(NA_real_, n, ncol(y), dimnames = dimnames(y))
@@ -233,6 +250,125 @@ kcv_engine_r <- function(C, F, y, folds, beta = NULL) {
     var[idx] <- diag(V)
   }
   list(pred = pred, var = var, folds = folds)
+}
+
+# Explicit Q and Q y (Q (y - F beta) for simple kriging) for the R oracles.
+q_parts_r <- function(C, F, y, beta) {
+  R <- tryCatch(chol(C), error = function(e) err_not_pd())
+  Ci <- chol2inv(R)
+  if (is.null(beta)) {
+    CiF <- Ci %*% F
+    RA <- tryCatch(chol(crossprod(F, CiF)), error = function(e) {
+      err_rank_deficient()
+    })
+    G <- backsolve(RA, t(CiF), transpose = TRUE)
+    Q <- Ci - crossprod(G)
+    Qy <- Q %*% y
+  } else {
+    Q <- Ci
+    Qy <- Q %*% (y - drop(F %*% beta))
+  }
+  list(Q = Q, Qy = Qy)
+}
+
+# Hold-out sets of buffered leave-one-out: element i holds the (sorted)
+# indices of the points within Euclidean distance `radius` of point i,
+# including i. Pure R, independent of the C++ neighbour search.
+buffer_sets_r <- function(coords, radius) {
+  D <- as.matrix(stats::dist(coords))
+  lapply(seq_len(nrow(D)), function(i) which(D[i, ] <= radius))
+}
+
+# Checks shared by the buffered-LOO oracles, with the same statuses and
+# messages as the C++ engine.
+check_buffer_set_r <- function(F, I, i, radius, simple) {
+  n <- nrow(F)
+  if (length(I) == n) {
+    raise_buffer_status(3, i, length(I), radius, n)
+  }
+  if (!simple && qr(F[-I, , drop = FALSE])$rank < ncol(F)) {
+    raise_buffer_status(4, i, length(I), radius, n)
+  }
+  invisible(TRUE)
+}
+
+#' Buffered leave-one-out in pure R (internal oracles)
+#'
+#' Point `i` is predicted from the observations outside `sets[[i]]` (which
+#' contains `i`). `kcv_buffer_r()` uses the explicit \eqn{Q} as
+#' `kcv_engine_r()` does; `kcv_buffer_reference()` refits kriging on the
+#' remaining data as `kcv_reference()` does. Used to test the C++ engine.
+#'
+#' @inheritParams kcv_engine
+#' @param sets List of hold-out index sets, e.g. from `buffer_sets_r()`.
+#' @param radius Used only in error messages.
+#' @noRd
+kcv_buffer_r <- function(C, F, y, sets, beta = NULL, radius = NA) {
+  args <- check_engine_args(C, F, y, seq_along(sets), beta)
+  y <- args$y
+  F <- args$F
+  qp <- q_parts_r(C, F, y, beta)
+  n <- nrow(y)
+  pred <- matrix(NA_real_, n, ncol(y), dimnames = dimnames(y))
+  var <- rep(NA_real_, n)
+  for (i in seq_len(n)) {
+    I <- sets[[i]]
+    check_buffer_set_r(F, I, i, radius, simple = !is.null(beta))
+    Rq <- tryCatch(chol(qp$Q[I, I, drop = FALSE]), error = function(e) {
+      raise_buffer_status(5, i, length(I), radius, n)
+    })
+    V <- chol2inv(Rq)
+    k <- match(i, I)
+    pred[i, ] <- y[i, ] - V[k, ] %*% qp$Qy[I, , drop = FALSE]
+    var[i] <- V[k, k]
+  }
+  list(pred = pred, var = var, folds = seq_len(n),
+    n_heldout = lengths(sets))
+}
+
+#' @rdname kcv_buffer_r
+#' @noRd
+kcv_buffer_reference <- function(C, F, y, sets, beta = NULL, radius = NA) {
+  args <- check_engine_args(C, F, y, seq_along(sets), beta)
+  y <- args$y
+  F <- args$F
+  n <- nrow(y)
+  pred <- matrix(NA_real_, n, ncol(y))
+  var <- rep(NA_real_, n)
+  for (i in seq_len(n)) {
+    I <- sets[[i]]
+    check_buffer_set_r(F, I, i, radius, simple = !is.null(beta))
+    r <- setdiff(seq_len(n), I)
+    k <- krige_subset_r(C, F, y, r, i, beta)
+    pred[i, ] <- k$pred
+    var[i] <- k$var
+  }
+  list(pred = pred, var = var, folds = seq_len(n),
+    n_heldout = lengths(sets))
+}
+
+# Kriging prediction at rows `I` from rows `r`, with textbook formulas and
+# solve(): the body of kcv_reference() for one fold.
+krige_subset_r <- function(C, F, y, r, I, beta) {
+  Crr <- C[r, r, drop = FALSE]
+  Cri <- C[r, I, drop = FALSE]
+  Fr <- F[r, , drop = FALSE]
+  Fi <- F[I, , drop = FALSE]
+  W <- solve(Crr, Cri) # simple kriging weights, |r| x |I|
+  if (is.null(beta)) {
+    CrrF <- solve(Crr, Fr)
+    A <- crossprod(Fr, CrrF)
+    b <- solve(A, crossprod(CrrF, y[r, , drop = FALSE]))
+  } else {
+    b <- matrix(beta, ncol(F), ncol(y))
+  }
+  pred <- Fi %*% b + crossprod(W, y[r, , drop = FALSE] - Fr %*% b)
+  V <- C[I, I, drop = FALSE] - crossprod(Cri, W)
+  if (is.null(beta)) {
+    D <- Fi - crossprod(W, Fr)
+    V <- V + D %*% solve(A, t(D))
+  }
+  list(pred = pred, var = diag(V))
 }
 
 #' Naive kriging cross-validation (internal oracle)
@@ -253,25 +389,9 @@ kcv_reference <- function(C, F, y, folds, beta = NULL) {
     I <- which(folds == f)
     r <- setdiff(seq_len(n), I)
     check_fold_identifiable(F, I, f, simple = !is.null(beta))
-    Crr <- C[r, r, drop = FALSE]
-    Cri <- C[r, I, drop = FALSE]
-    Fr <- F[r, , drop = FALSE]
-    Fi <- F[I, , drop = FALSE]
-    W <- solve(Crr, Cri) # simple kriging weights, |r| x |I|
-    if (is.null(beta)) {
-      CrrF <- solve(Crr, Fr)
-      A <- crossprod(Fr, CrrF)
-      b <- solve(A, crossprod(CrrF, y[r, , drop = FALSE]))
-    } else {
-      b <- matrix(beta, ncol(F), ncol(y))
-    }
-    pred[I, ] <- Fi %*% b + crossprod(W, y[r, , drop = FALSE] - Fr %*% b)
-    V <- C[I, I, drop = FALSE] - crossprod(Cri, W)
-    if (is.null(beta)) {
-      D <- Fi - crossprod(W, Fr)
-      V <- V + D %*% solve(A, t(D))
-    }
-    var[I] <- diag(V)
+    k <- krige_subset_r(C, F, y, r, I, beta)
+    pred[I, ] <- k$pred
+    var[I] <- k$var
   }
   list(pred = pred, var = var, folds = folds)
 }
@@ -341,27 +461,54 @@ err_rank_deficient <- function() {
   stop("The trend matrix F is rank deficient.", call. = FALSE)
 }
 
-err_every_obs <- function(f) {
+err_every_obs <- function(f, label = NULL) {
+  if (!is.null(label)) {
+    stop(label, ": every observation is held out; nothing is left to ",
+      "predict from.",
+      call. = FALSE
+    )
+  }
   stop("Fold ", f, " contains every observation; nothing is left to ",
     "predict from.",
     call. = FALSE
   )
 }
 
-err_unidentifiable <- function(f) {
+err_unidentifiable <- function(f, label = paste("Fold", f),
+                               region = "this fold",
+                               advice = "different folds") {
   stop(
-    "Fold ", f, ": the trend is not identifiable from the data outside ",
-    "this fold (the remaining rows of the trend matrix are rank ",
-    "deficient). Use different folds or a simpler trend.",
+    label, ": the trend is not identifiable from the data outside ",
+    region, " (the remaining rows of the trend matrix are rank ",
+    "deficient). Use ", advice, " or a simpler trend.",
     call. = FALSE
   )
 }
 
-err_singular <- function(f) {
+err_singular <- function(f, label = paste("Fold", f), region = "fold") {
   stop(
-    "Fold ", f, ": the matrix Q[I, I] is numerically singular, so this ",
-    "fold cannot be predicted from the remaining data.",
+    label, ": the matrix Q[I, I] is numerically singular, so this ",
+    region, " cannot be predicted from the remaining data.",
     call. = FALSE
+  )
+}
+
+# Errors of buffered leave-one-out, naming the point (row number) and its
+# hold-out set.
+raise_buffer_status <- function(status, i, m, radius, n) {
+  label <- paste0(
+    "Point ", i, " (the buffer of radius ", format(radius), " holds out ",
+    m, " of ", n, " observations)"
+  )
+  switch(status,
+    err_not_pd(),
+    err_rank_deficient(),
+    err_every_obs(i, label),
+    err_unidentifiable(i, label,
+      region = "the buffer", advice = "a smaller radius"
+    ),
+    err_singular(i, label, region = "point"),
+    err_memory(n, 1)
   )
 }
 
