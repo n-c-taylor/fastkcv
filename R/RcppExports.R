@@ -5,8 +5,16 @@ cov_matrix_cpp <- function(coords1, coords2, type, psill, range, kappa, ang1, an
     .Call(`_fastkcv_cov_matrix_cpp`, coords1, coords2, type, psill, range, kappa, ang1, anis1, symmetric)
 }
 
-kcv_engine_cpp <- function(C, F, Y, U, fold_idx, simple, beta) {
-    .Call(`_fastkcv_kcv_engine_cpp`, C, F, Y, U, fold_idx, simple, beta)
+prepare_model_cpp <- function(coords, type, psill, range, kappa, ang1, anis1, F, simple) {
+    .Call(`_fastkcv_prepare_model_cpp`, coords, type, psill, range, kappa, ang1, anis1, F, simple)
+}
+
+prepare_matrix_cpp <- function(C, F, simple) {
+    .Call(`_fastkcv_prepare_matrix_cpp`, C, F, simple)
+}
+
+run_cpp <- function(Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta) {
+    .Call(`_fastkcv_run_cpp`, Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta)
 }
 
 fold_inverse_cpp <- function(Qii) {

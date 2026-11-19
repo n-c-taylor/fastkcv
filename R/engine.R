@@ -1,7 +1,7 @@
 #' Exact kriging cross-validation from a covariance matrix
 #'
-#' Low-level engine behind [kcv()], implemented in C++. Given the covariance matrix `C` of the
-#' observations, the trend matrix `F` and fold assignments, it computes
+#' Low-level engine behind [kcv()], implemented in C++. Given the covariance
+#' matrix `C` of the observations, the trend matrix `F` and fold assignments, it computes
 #' cross-validation predictions and variances for every fold from a single
 #' factorisation of `C`:
 #'
@@ -19,13 +19,16 @@
 #' uses \eqn{e_i = (Qy)_i / Q_{ii}} and \eqn{1 / Q_{ii}} directly.
 #'
 #' @section Memory:
-#' The engine needs one \eqn{n \times n} workspace in addition to `C`, so the
-#' peak memory is about \eqn{16 n^2} bytes (6.4 GB at \eqn{n = 20000}).
-#' Because operating systems often over-commit memory, an allocation that is
-#' too large may not fail cleanly; inputs with more than
-#' `getOption("fastkcv.max_n", 20000)` observations are therefore rejected up
-#' front. Set `options(fastkcv.max_n = )` to raise the limit on machines with
-#' enough memory.
+#' Factorising `C` needs one \eqn{n \times n} workspace in addition to `C`,
+#' so the peak memory of `kcv_engine()` is about \eqn{16 n^2} bytes. (The
+#' model-based [kcv()] builds the covariance directly in the workspace and
+#' needs half of that.) Because operating systems often over-commit memory,
+#' an allocation that is too large may not fail cleanly, so the estimate is
+#' checked up front against a budget of `getOption("fastkcv.max_gb", 6.4)`
+#' GB, which allows \eqn{n} up to about 20,000 here and 28,000 in [kcv()].
+#' Raise it with `options(fastkcv.max_gb = )` on machines with enough
+#' memory. A prepared object keeps its \eqn{n \times n} factor (\eqn{8 n^2}
+#' bytes) for as long as it exists.
 #'
 #' @param C n x n covariance matrix of the observations (positive definite).
 #' @param F n x p trend matrix (a column of ones for ordinary kriging).
@@ -33,8 +36,12 @@
 #'   cross-validated with the same kriging weights.
 #' @param folds Vector of length n of fold identifiers.
 #' @param beta Optional trend coefficients (length p) for simple kriging.
-#' @return A list with `pred` (n x T matrix), `var` (length-n vector; the same
-#'   for every column of `y`) and `folds`.
+#' @return `kcv_engine()` and `kcv_engine_run()` return a list with `pred`
+#'   (n x T matrix), `var` (length-n vector; the same for every column of
+#'   `y`) and `folds`. `kcv_engine_prepare()` returns a `kcv_prepared` object
+#'   holding the factorisation, to be passed to `kcv_engine_run()` any number
+#'   of times with different `y` or `folds`.
+#' @seealso [kcv_prepare()] and [kcv_run()] for the model-based equivalent.
 #' @export
 #' @examples
 #' set.seed(1)
@@ -43,37 +50,148 @@
 #' y <- rnorm(50)
 #' res <- kcv_engine(C, matrix(1, 50, 1), y, folds = seq_len(50))
 #' head(res$pred)
+#'
+#' # Factorise once, then cross-validate several fold schemes.
+#' p <- kcv_engine_prepare(C, matrix(1, 50, 1))
+#' loo <- kcv_engine_run(p, y, seq_len(50))
+#' k5 <- kcv_engine_run(p, y, rep(1:5, 10))
 kcv_engine <- function(C, F, y, folds, beta = NULL) {
   args <- check_engine_args(C, F, y, folds, beta)
-  y <- args$y
-  F <- args$F
-  check_size(nrow(y))
-  storage.mode(C) <- "double"
-  storage.mode(y) <- "double"
-  storage.mode(F) <- "double"
+  p <- kcv_engine_prepare(C, args$F, beta)
+  kcv_engine_run(p, args$y, folds)
+}
 
+#' @rdname kcv_engine
+#' @export
+kcv_engine_prepare <- function(C, F, beta = NULL) {
+  if (!is.matrix(C) || nrow(C) != ncol(C)) {
+    stop("`C` must be a square n x n matrix.", call. = FALSE)
+  }
+  n <- nrow(C)
+  F <- as.matrix(F)
+  if (nrow(F) != n) {
+    stop("`F` must have n = nrow(C) rows.", call. = FALSE)
+  }
+  check_beta(beta, F)
+  check_memory(n, matrices = 2)
+  storage.mode(C) <- "double"
+  storage.mode(F) <- "double"
+  res <- prepare_matrix_cpp(C, F, !is.null(beta))
+  new_prepared(res, F, beta, inp = NULL, matrices = 2)
+}
+
+#' @rdname kcv_engine
+#' @param prepared A `kcv_prepared` object from `kcv_engine_prepare()` or
+#'   [kcv_prepare()].
+#' @export
+kcv_engine_run <- function(prepared, y, folds) {
+  check_prepared(prepared)
+  n <- length(prepared$qdiag)
+  if (!is.matrix(y)) {
+    y <- matrix(y, ncol = 1)
+  }
+  if (nrow(y) != n || !is.numeric(y)) {
+    stop("`y` must be a numeric vector of length n or a matrix with n = ", n,
+      " rows.",
+      call. = FALSE
+    )
+  }
+  if (length(folds) != n || anyNA(folds)) {
+    stop("`folds` must have length n = ", n, " and no missing values.",
+      call. = FALSE
+    )
+  }
+  run_prepared(prepared, y, folds)
+}
+
+#' @export
+print.kcv_prepared <- function(x, ...) {
+  n <- length(x$qdiag)
+  type <- if (!is.null(x$beta)) {
+    "simple kriging"
+  } else if (ncol(x$F) == 1 && all(x$F == 1)) {
+    "ordinary kriging"
+  } else {
+    "universal kriging"
+  }
+  cat(
+    "<kcv_prepared> ", type, ", n = ", n, ", p = ", ncol(x$F), ", ",
+    format(structure(8 * as.double(n)^2, class = "object_size"),
+      units = "auto"
+    ),
+    if (is.null(x$inp)) ", from a covariance matrix" else "", "\n",
+    sep = ""
+  )
+  invisible(x)
+}
+
+# Wraps the C++ factorisation into a kcv_prepared object.
+new_prepared <- function(res, F, beta, inp, matrices) {
+  if (res$status != 0) {
+    raise_status(res$status, NA, nrow(F), matrices)
+  }
   simple <- !is.null(beta)
+  structure(
+    list(
+      W = res$W, B = res$B, S = res$S, G = res$G,
+      U = if (simple) matrix(0, 0, 0) else qr.Q(qr(F)),
+      qdiag = res$qdiag, F = F,
+      beta = if (simple) as.double(beta) else NULL,
+      inp = inp
+    ),
+    class = "kcv_prepared"
+  )
+}
+
+# Cross-validates one fold scheme from a prepared factorisation.
+run_prepared <- function(p, y, folds) {
+  storage.mode(y) <- "double"
+  simple <- !is.null(p$beta)
   labels <- sort(unique(folds))
   fold_idx <- lapply(labels, function(f) which(folds == f) - 1L)
-  U <- if (simple) matrix(0, 0, 0) else qr.Q(qr(F))
-  res <- kcv_engine_cpp(
-    C, F, y, U, fold_idx, simple,
-    if (simple) as.double(beta) else numeric(0)
+  res <- run_cpp(
+    p$W, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, fold_idx, simple,
+    if (simple) p$beta else numeric(0)
   )
   if (res$status != 0) {
     f <- if (res$fold > 0) labels[res$fold] else NA
-    switch(res$status,
-      err_not_pd(),
-      err_rank_deficient(),
-      err_every_obs(f),
-      err_unidentifiable(f),
-      err_singular(f),
-      err_memory(nrow(y))
-    )
+    raise_status(res$status, f, nrow(y), 0)
   }
   pred <- res$pred
   dimnames(pred) <- dimnames(y)
   list(pred = pred, var = res$var, folds = folds)
+}
+
+raise_status <- function(status, f, n, matrices) {
+  switch(status,
+    err_not_pd(),
+    err_rank_deficient(),
+    err_every_obs(f),
+    err_unidentifiable(f),
+    err_singular(f),
+    err_memory(n, max(matrices, 1))
+  )
+}
+
+check_prepared <- function(x) {
+  if (!inherits(x, "kcv_prepared")) {
+    stop("`prepared` must be a kcv_prepared object from kcv_prepare() or ",
+      "kcv_engine_prepare().",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+check_beta <- function(beta, F) {
+  if (!is.null(beta) && length(beta) != ncol(F)) {
+    stop(
+      "`beta` has length ", length(beta), " but the trend has ", ncol(F),
+      " coefficient(s).",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 #' Exact kriging cross-validation in pure R (internal oracle)
@@ -183,13 +301,7 @@ check_engine_args <- function(C, F, y, folds, beta) {
       call. = FALSE
     )
   }
-  if (!is.null(beta) && length(beta) != ncol(F)) {
-    stop(
-      "`beta` has length ", length(beta), " but the trend has ", ncol(F),
-      " coefficient(s).",
-      call. = FALSE
-    )
-  }
+  check_beta(beta, F)
   list(y = y, F = F)
 }
 
@@ -205,11 +317,12 @@ check_fold_identifiable <- function(F, idx, f, simple) {
 }
 
 # Guard against inputs whose dense n x n matrices cannot reasonably be held
-# in memory. See the "Memory" section of ?kcv_engine.
-check_size <- function(n) {
-  max_n <- getOption("fastkcv.max_n", 20000)
-  if (n > max_n) {
-    err_memory(n, max_n)
+# in memory: `matrices` n x n double matrices must fit in the budget
+# getOption("fastkcv.max_gb"). See the "Memory" section of ?kcv_engine.
+check_memory <- function(n, matrices) {
+  max_gb <- getOption("fastkcv.max_gb", 6.4)
+  if (matrices * 8 * as.double(n)^2 / 1e9 > max_gb) {
+    err_memory(n, matrices, max_gb)
   }
   invisible(TRUE)
 }
@@ -252,15 +365,19 @@ err_singular <- function(f) {
   )
 }
 
-err_memory <- function(n, max_n = NULL) {
-  gb <- 16 * as.double(n)^2 / 1e9
+err_memory <- function(n, matrices, max_gb = NULL) {
+  gb <- matrices * 8 * as.double(n)^2 / 1e9
+  # Rounded up to two significant digits, so the suggested budget suffices.
+  step <- 10^(floor(log10(gb)) - 1)
+  need <- ceiling(gb / step) * step
   stop(
-    "n = ", n, " observations need two dense n x n matrices (about ",
-    format(signif(gb, 2)), " GB)",
-    if (!is.null(max_n)) {
+    "n = ", n, " observations need ", matrices, " dense n x n matri",
+    if (matrices == 1) "x" else "ces", " (about ", format(need), " GB)",
+    if (!is.null(max_gb)) {
       paste0(
-        ", above the limit of n = ", max_n, ". If this machine has enough ",
-        "memory, raise the limit with options(fastkcv.max_n = ", n, ")"
+        ", above the memory budget of ", format(max_gb), " GB. If this ",
+        "machine has enough memory, raise it with options(fastkcv.max_gb = ",
+        format(need), ")"
       )
     } else {
       ", which could not be allocated"

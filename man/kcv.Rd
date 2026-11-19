@@ -54,6 +54,34 @@ Ordinary kriging (\code{formula = z ~ 1}) and universal kriging (\code{z ~ x + y
 external drift, ...) re-estimate the trend by generalised least squares in
 each fold, as gstat does. Simple kriging is used when \code{beta} is supplied.
 }
+\section{Performance}{
+
+Almost all of the time goes into one dense Cholesky factorisation and
+triangular inverse, which R delegates to its BLAS/LAPACK libraries. The
+reference BLAS shipped with many R builds is single-threaded and slow; an
+optimised BLAS is typically many times faster on these operations. Check
+which one R uses with \code{extSoftVersion()["BLAS"]} or \code{sessionInfo()}.
+\itemize{
+\item Linux (Debian/Ubuntu): install an optimised BLAS such as OpenBLAS
+(\verb{sudo apt install libopenblas0-pthread}); the system's alternatives
+mechanism switches R to it without reinstalling anything.
+\item macOS: the CRAN build of R can use Apple's Accelerate framework; see the
+R for macOS FAQ for how to switch.
+\item Windows: see "R Installation and Administration" for replacing R's
+BLAS.
+}
+
+Multithreaded BLAS libraries use all cores by default; when running
+several R processes in parallel, limit the threads (for OpenBLAS, the
+environment variable \code{OPENBLAS_NUM_THREADS}).
+
+The factorisation depends only on the locations, the model and the trend,
+not on the folds. To cross-validate several fold schemes for the same
+data, call \code{\link[=kcv_prepare]{kcv_prepare()}} once and \code{\link[=kcv_run]{kcv_run()}} for each scheme.
+
+See \code{\link[=kcv_engine]{kcv_engine()}} for memory requirements.
+}
+
 \examples{
 library(sp)
 data(meuse, package = "sp")

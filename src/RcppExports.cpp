@@ -30,20 +30,56 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// kcv_engine_cpp
-Rcpp::List kcv_engine_cpp(const Rcpp::NumericMatrix& C, const arma::mat& F, const arma::mat& Y, const arma::mat& U, const Rcpp::List& fold_idx, bool simple, const arma::vec& beta);
-RcppExport SEXP _fastkcv_kcv_engine_cpp(SEXP CSEXP, SEXP FSEXP, SEXP YSEXP, SEXP USEXP, SEXP fold_idxSEXP, SEXP simpleSEXP, SEXP betaSEXP) {
+// prepare_model_cpp
+Rcpp::List prepare_model_cpp(const Rcpp::NumericMatrix& coords, const Rcpp::IntegerVector& type, const Rcpp::NumericVector& psill, const Rcpp::NumericVector& range, const Rcpp::NumericVector& kappa, const Rcpp::NumericVector& ang1, const Rcpp::NumericVector& anis1, const arma::mat& F, bool simple);
+RcppExport SEXP _fastkcv_prepare_model_cpp(SEXP coordsSEXP, SEXP typeSEXP, SEXP psillSEXP, SEXP rangeSEXP, SEXP kappaSEXP, SEXP ang1SEXP, SEXP anis1SEXP, SEXP FSEXP, SEXP simpleSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type coords(coordsSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type type(typeSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type psill(psillSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type range(rangeSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type kappa(kappaSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type ang1(ang1SEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type anis1(anis1SEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type F(FSEXP);
+    Rcpp::traits::input_parameter< bool >::type simple(simpleSEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_model_cpp(coords, type, psill, range, kappa, ang1, anis1, F, simple));
+    return rcpp_result_gen;
+END_RCPP
+}
+// prepare_matrix_cpp
+Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C, const arma::mat& F, bool simple);
+RcppExport SEXP _fastkcv_prepare_matrix_cpp(SEXP CSEXP, SEXP FSEXP, SEXP simpleSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type C(CSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type F(FSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< bool >::type simple(simpleSEXP);
+    rcpp_result_gen = Rcpp::wrap(prepare_matrix_cpp(C, F, simple));
+    return rcpp_result_gen;
+END_RCPP
+}
+// run_cpp
+Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B, const arma::mat& S, const arma::mat& G, const arma::mat& U, const arma::vec& qdiag, const arma::mat& F, const arma::mat& Y, const Rcpp::List& fold_idx, bool simple, const arma::vec& beta);
+RcppExport SEXP _fastkcv_run_cpp(SEXP WrSEXP, SEXP BSEXP, SEXP SSEXP, SEXP GSEXP, SEXP USEXP, SEXP qdiagSEXP, SEXP FSEXP, SEXP YSEXP, SEXP fold_idxSEXP, SEXP simpleSEXP, SEXP betaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type Wr(WrSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type B(BSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type S(SSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type G(GSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type U(USEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type qdiag(qdiagSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type F(FSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type fold_idx(fold_idxSEXP);
     Rcpp::traits::input_parameter< bool >::type simple(simpleSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type beta(betaSEXP);
-    rcpp_result_gen = Rcpp::wrap(kcv_engine_cpp(C, F, Y, U, fold_idx, simple, beta));
+    rcpp_result_gen = Rcpp::wrap(run_cpp(Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -61,7 +97,9 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_fastkcv_cov_matrix_cpp", (DL_FUNC) &_fastkcv_cov_matrix_cpp, 9},
-    {"_fastkcv_kcv_engine_cpp", (DL_FUNC) &_fastkcv_kcv_engine_cpp, 7},
+    {"_fastkcv_prepare_model_cpp", (DL_FUNC) &_fastkcv_prepare_model_cpp, 9},
+    {"_fastkcv_prepare_matrix_cpp", (DL_FUNC) &_fastkcv_prepare_matrix_cpp, 3},
+    {"_fastkcv_run_cpp", (DL_FUNC) &_fastkcv_run_cpp, 11},
     {"_fastkcv_fold_inverse_cpp", (DL_FUNC) &_fastkcv_fold_inverse_cpp, 1},
     {NULL, NULL, 0}
 };

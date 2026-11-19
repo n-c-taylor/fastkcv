@@ -5,7 +5,14 @@
 // G = S^{-T} (C^{-1}F)', so that
 //   Q = C^{-1} - C^{-1}F A^{-1} F'C^{-1} = W W' - G'G.
 // Only the diagonal blocks Q[I, I] = W[I, ] W[I, ]' - G[, I]' G[, I] are
-// formed, never the full n x n matrix Q. For simple kriging G is empty.
+// formed, never the full n x n matrix Q. For simple kriging B, S and G are
+// empty.
+//
+// The work is split in two stages so that one factorisation can serve many
+// fold schemes and responses:
+//   prepare: W (overwriting a single n x n buffer), B, S, G and the diagonal
+//            of Q used by leave-one-out;
+//   run:     Qy and the per-fold solves.
 //
 // Errors are returned as a status code (and the position of the offending
 // fold) so that the R wrapper raises exactly the same conditions as the R
@@ -16,6 +23,7 @@
 
 #include <RcppArmadillo.h>
 
+#include "covariance.h"
 #include "lapack.h"
 
 namespace {
@@ -64,99 +72,145 @@ bool identifiable(const arma::mat& U, const arma::uvec& idx) {
   return ev.min() >= ident_tol;
 }
 
-Rcpp::List engine(const Rcpp::NumericMatrix& Cr, const arma::mat& F,
-                  const arma::mat& Y, const arma::mat& U,
-                  const Rcpp::List& fold_idx, bool simple,
-                  const arma::vec& beta) {
-  const int n = Cr.nrow();
-  const arma::uword T = Y.n_cols;
-  const int nf = fold_idx.size();
-
-  // W <- R^{-1}, in place, from a single copy of C.
-  arma::mat W(Cr.begin(), n, n);
-  if (chol_upper_inplace(W.memptr(), n) != 0) return fail(1, 0);
-  if (tri_inverse_upper_inplace(W.memptr(), n) != 0) return fail(1, 0);
+// Factorises the covariance matrix held in `Wr` in place (Wr <- R^{-1}) and
+// returns the prepared object, or a failure status.
+Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
+                          bool simple) {
+  const int n = Wr.nrow();
+  if (chol_upper_inplace(Wr.begin(), n) != 0) return fail(1, 0);
+  if (tri_inverse_upper_inplace(Wr.begin(), n) != 0) return fail(1, 0);
+  arma::mat W(Wr.begin(), n, n, false, true);
   for (int j = 0; j < n; ++j) {
     double* col = W.colptr(j);
     for (int i = j + 1; i < n; ++i) col[i] = 0.0;
   }
 
-  arma::mat Qy, G;
-  if (simple) {
-    arma::mat Yt = Y;
-    Yt.each_col() -= F * beta;
-    Qy = W * (W.t() * Yt);
-  } else {
-    arma::mat B = W.t() * F;
-    arma::mat S;
+  // Diagonal of C^{-1}: squared row norms of W, accumulated column by column.
+  arma::vec qdiag(n, arma::fill::zeros);
+  for (int j = 0; j < n; ++j) {
+    const double* col = W.colptr(j);
+    for (int i = 0; i <= j; ++i) qdiag[i] += col[i] * col[i];
+  }
+
+  arma::mat B, S, G;
+  if (!simple) {
+    B = W.t() * F;
     if (!arma::chol(S, arma::symmatu(B.t() * B))) return fail(2, 0);
-    arma::mat H = W * B;  // C^{-1} F
-    G = arma::solve(arma::trimatl(S.t()), H.t());
-    arma::mat Z = W.t() * Y;
-    arma::mat FtCiY = B.t() * Z;
-    Qy = W * Z - G.t() * arma::solve(arma::trimatl(S.t()), FtCiY);
+    G = arma::solve(arma::trimatl(S.t()), (W * B).t());
+    qdiag -= arma::sum(arma::square(G), 0).t();
   }
-
-  arma::mat pred(n, T);
-  arma::vec var(n);
-
-  bool loo = true;
-  for (int f = 0; f < nf && loo; ++f) {
-    loo = Rcpp::as<Rcpp::IntegerVector>(fold_idx[f]).size() == 1;
-  }
-
-  if (loo) {
-    // Q_ii = ||W[i, ]||^2 - ||G[, i]||^2, accumulated column by column.
-    arma::vec qd(n, arma::fill::zeros);
-    for (int j = 0; j < n; ++j) {
-      const double* col = W.colptr(j);
-      for (int i = 0; i <= j; ++i) qd[i] += col[i] * col[i];
-    }
-    if (!simple) qd -= arma::sum(arma::square(G), 0).t();
-    arma::vec lev;
-    if (!simple) lev = arma::sum(arma::square(U), 1);
-    for (int f = 0; f < nf; ++f) {
-      int i = Rcpp::as<Rcpp::IntegerVector>(fold_idx[f])[0];
-      if (n == 1) return fail(3, f + 1);
-      if (!simple && 1.0 - lev[i] < ident_tol) return fail(4, f + 1);
-      if (!(qd[i] > 0.0) || !std::isfinite(qd[i])) return fail(5, f + 1);
-      var[i] = 1.0 / qd[i];
-      pred.row(i) = Y.row(i) - Qy.row(i) / qd[i];
-    }
-  } else {
-    for (int f = 0; f < nf; ++f) {
-      Rcpp::IntegerVector iv = fold_idx[f];
-      arma::uvec idx = Rcpp::as<arma::uvec>(iv);
-      if (idx.n_elem == static_cast<arma::uword>(n)) return fail(3, f + 1);
-      if (!simple && !identifiable(U, idx)) return fail(4, f + 1);
-      arma::mat Wi = W.rows(idx);
-      arma::mat Qii = Wi * Wi.t();
-      if (!simple) {
-        arma::mat Gi = G.cols(idx);
-        Qii -= Gi.t() * Gi;
-      }
-      arma::mat V;
-      if (!fold_inverse(Qii, V)) return fail(5, f + 1);
-      pred.rows(idx) = Y.rows(idx) - V * Qy.rows(idx);
-      var.elem(idx) = V.diag();
-      Rcpp::checkUserInterrupt();
-    }
-  }
-  return Rcpp::List::create(Rcpp::Named("status") = 0,
-                            Rcpp::Named("pred") = pred,
-                            Rcpp::Named("var") = Rcpp::NumericVector(
-                                var.begin(), var.end()));
+  return Rcpp::List::create(
+      Rcpp::Named("status") = 0, Rcpp::Named("W") = Wr,
+      Rcpp::Named("B") = B, Rcpp::Named("S") = S, Rcpp::Named("G") = G,
+      Rcpp::Named("qdiag") =
+          Rcpp::NumericVector(qdiag.begin(), qdiag.end()));
 }
 
 }  // namespace
 
+// Builds the covariance matrix of `coords` directly in the buffer that is
+// then factorised, so only one n x n matrix is ever allocated.
 // [[Rcpp::export]]
-Rcpp::List kcv_engine_cpp(const Rcpp::NumericMatrix& C, const arma::mat& F,
-                          const arma::mat& Y, const arma::mat& U,
-                          const Rcpp::List& fold_idx, bool simple,
-                          const arma::vec& beta) {
+Rcpp::List prepare_model_cpp(const Rcpp::NumericMatrix& coords,
+                             const Rcpp::IntegerVector& type,
+                             const Rcpp::NumericVector& psill,
+                             const Rcpp::NumericVector& range,
+                             const Rcpp::NumericVector& kappa,
+                             const Rcpp::NumericVector& ang1,
+                             const Rcpp::NumericVector& anis1,
+                             const arma::mat& F, bool simple) {
   try {
-    return engine(C, F, Y, U, fold_idx, simple, beta);
+    std::vector<fastkcv::Component> comp =
+        fastkcv::make_components(type, psill, range, kappa, ang1, anis1);
+    Rcpp::NumericMatrix W(Rcpp::no_init(coords.nrow(), coords.nrow()));
+    fastkcv::fill_cov(W.begin(), coords, coords, comp, true);
+    return factor_inplace(W, F, simple);
+  } catch (std::bad_alloc&) {
+    return fail(6, 0);
+  }
+}
+
+// Factorises a user-supplied covariance matrix; C itself is not modified.
+// [[Rcpp::export]]
+Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C,
+                              const arma::mat& F, bool simple) {
+  try {
+    Rcpp::NumericMatrix W = Rcpp::clone(C);
+    return factor_inplace(W, F, simple);
+  } catch (std::bad_alloc&) {
+    return fail(6, 0);
+  }
+}
+
+// Cross-validation residuals and variances for one fold scheme, from a
+// prepared factorisation. `fold_idx` is a list of 0-based row indices, one
+// element per fold, in the order in which folds are checked.
+// [[Rcpp::export]]
+Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
+                   const arma::mat& S, const arma::mat& G,
+                   const arma::mat& U, const arma::vec& qdiag,
+                   const arma::mat& F, const arma::mat& Y,
+                   const Rcpp::List& fold_idx, bool simple,
+                   const arma::vec& beta) {
+  try {
+    const int n = Wr.nrow();
+    const arma::uword T = Y.n_cols;
+    const int nf = fold_idx.size();
+    const arma::mat W(const_cast<double*>(Wr.begin()), n, n, false, true);
+
+    arma::mat Qy;
+    if (simple) {
+      arma::mat Yt = Y;
+      Yt.each_col() -= F * beta;
+      Qy = W * (W.t() * Yt);
+    } else {
+      arma::mat Z = W.t() * Y;
+      Qy = W * Z - G.t() * arma::solve(arma::trimatl(S.t()), B.t() * Z);
+    }
+
+    arma::mat pred(n, T);
+    arma::vec var(n);
+
+    bool loo = true;
+    for (int f = 0; f < nf && loo; ++f) {
+      loo = Rcpp::as<Rcpp::IntegerVector>(fold_idx[f]).size() == 1;
+    }
+
+    if (loo) {
+      arma::vec lev;
+      if (!simple) lev = arma::sum(arma::square(U), 1);
+      for (int f = 0; f < nf; ++f) {
+        int i = Rcpp::as<Rcpp::IntegerVector>(fold_idx[f])[0];
+        if (n == 1) return fail(3, f + 1);
+        if (!simple && 1.0 - lev[i] < ident_tol) return fail(4, f + 1);
+        if (!(qdiag[i] > 0.0) || !std::isfinite(qdiag[i])) {
+          return fail(5, f + 1);
+        }
+        var[i] = 1.0 / qdiag[i];
+        pred.row(i) = Y.row(i) - Qy.row(i) / qdiag[i];
+      }
+    } else {
+      for (int f = 0; f < nf; ++f) {
+        Rcpp::IntegerVector iv = fold_idx[f];
+        arma::uvec idx = Rcpp::as<arma::uvec>(iv);
+        if (idx.n_elem == static_cast<arma::uword>(n)) return fail(3, f + 1);
+        if (!simple && !identifiable(U, idx)) return fail(4, f + 1);
+        arma::mat Wi = W.rows(idx);
+        arma::mat Qii = Wi * Wi.t();
+        if (!simple) {
+          arma::mat Gi = G.cols(idx);
+          Qii -= Gi.t() * Gi;
+        }
+        arma::mat V;
+        if (!fold_inverse(Qii, V)) return fail(5, f + 1);
+        pred.rows(idx) = Y.rows(idx) - V * Qy.rows(idx);
+        var.elem(idx) = V.diag();
+        Rcpp::checkUserInterrupt();
+      }
+    }
+    return Rcpp::List::create(
+        Rcpp::Named("status") = 0, Rcpp::Named("pred") = pred,
+        Rcpp::Named("var") = Rcpp::NumericVector(var.begin(), var.end()));
   } catch (std::bad_alloc&) {
     return fail(6, 0);
   }

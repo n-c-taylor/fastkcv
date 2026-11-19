@@ -2,9 +2,15 @@
 % Please edit documentation in R/engine.R
 \name{kcv_engine}
 \alias{kcv_engine}
+\alias{kcv_engine_prepare}
+\alias{kcv_engine_run}
 \title{Exact kriging cross-validation from a covariance matrix}
 \usage{
 kcv_engine(C, F, y, folds, beta = NULL)
+
+kcv_engine_prepare(C, F, beta = NULL)
+
+kcv_engine_run(prepared, y, folds)
 }
 \arguments{
 \item{C}{n x n covariance matrix of the observations (positive definite).}
@@ -17,14 +23,20 @@ cross-validated with the same kriging weights.}
 \item{folds}{Vector of length n of fold identifiers.}
 
 \item{beta}{Optional trend coefficients (length p) for simple kriging.}
+
+\item{prepared}{A \code{kcv_prepared} object from \code{kcv_engine_prepare()} or
+\code{\link[=kcv_prepare]{kcv_prepare()}}.}
 }
 \value{
-A list with \code{pred} (n x T matrix), \code{var} (length-n vector; the same
-for every column of \code{y}) and \code{folds}.
+\code{kcv_engine()} and \code{kcv_engine_run()} return a list with \code{pred}
+(n x T matrix), \code{var} (length-n vector; the same for every column of
+\code{y}) and \code{folds}. \code{kcv_engine_prepare()} returns a \code{kcv_prepared} object
+holding the factorisation, to be passed to \code{kcv_engine_run()} any number
+of times with different \code{y} or \code{folds}.
 }
 \description{
-Low-level engine behind \code{\link[=kcv]{kcv()}}, implemented in C++. Given the covariance matrix \code{C} of the
-observations, the trend matrix \code{F} and fold assignments, it computes
+Low-level engine behind \code{\link[=kcv]{kcv()}}, implemented in C++. Given the covariance
+matrix \code{C} of the observations, the trend matrix \code{F} and fold assignments, it computes
 cross-validation predictions and variances for every fold from a single
 factorisation of \code{C}:
 }
@@ -46,13 +58,16 @@ uses \eqn{e_i = (Qy)_i / Q_{ii}} and \eqn{1 / Q_{ii}} directly.
 }
 \section{Memory}{
 
-The engine needs one \eqn{n \times n} workspace in addition to \code{C}, so the
-peak memory is about \eqn{16 n^2} bytes (6.4 GB at \eqn{n = 20000}).
-Because operating systems often over-commit memory, an allocation that is
-too large may not fail cleanly; inputs with more than
-\code{getOption("fastkcv.max_n", 20000)} observations are therefore rejected up
-front. Set \code{options(fastkcv.max_n = )} to raise the limit on machines with
-enough memory.
+Factorising \code{C} needs one \eqn{n \times n} workspace in addition to \code{C},
+so the peak memory of \code{kcv_engine()} is about \eqn{16 n^2} bytes. (The
+model-based \code{\link[=kcv]{kcv()}} builds the covariance directly in the workspace and
+needs half of that.) Because operating systems often over-commit memory,
+an allocation that is too large may not fail cleanly, so the estimate is
+checked up front against a budget of \code{getOption("fastkcv.max_gb", 6.4)}
+GB, which allows \eqn{n} up to about 20,000 here and 28,000 in \code{\link[=kcv]{kcv()}}.
+Raise it with \code{options(fastkcv.max_gb = )} on machines with enough
+memory. A prepared object keeps its \eqn{n \times n} factor (\eqn{8 n^2}
+bytes) for as long as it exists.
 }
 
 \examples{
@@ -62,4 +77,12 @@ C <- exp(-as.matrix(dist(xy)) / 0.3)
 y <- rnorm(50)
 res <- kcv_engine(C, matrix(1, 50, 1), y, folds = seq_len(50))
 head(res$pred)
+
+# Factorise once, then cross-validate several fold schemes.
+p <- kcv_engine_prepare(C, matrix(1, 50, 1))
+loo <- kcv_engine_run(p, y, seq_len(50))
+k5 <- kcv_engine_run(p, y, rep(1:5, 10))
+}
+\seealso{
+\code{\link[=kcv_prepare]{kcv_prepare()}} and \code{\link[=kcv_run]{kcv_run()}} for the model-based equivalent.
 }

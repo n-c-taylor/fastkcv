@@ -160,15 +160,23 @@ test_that("C++ fold inverse detects numerically singular Q[I, I]", {
   expect_equal(fold_inverse_cpp(A), solve(A), tolerance = tol)
 })
 
-test_that("inputs above the size limit are rejected before allocation", {
-  withr::local_options(fastkcv.max_n = 10)
-  xy <- cbind(1:11, 0)
-  C <- covariance_matrix(gstat::vgm(1, "Exp", 3, 0.1), xy)
-  expect_error(kcv_engine(C, matrix(1, 11, 1), rnorm(11), 1:11),
-    "n = 11 .*fastkcv.max_n")
-  expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse_df(), model = m_ok),
-    "n = 155 .*options\\(fastkcv.max_n = 155\\)")
-  expect_error(err_memory(1e5), "about 160 GB.*could not be allocated")
-  withr::local_options(fastkcv.max_n = 11)
-  expect_no_error(kcv_engine(C, matrix(1, 11, 1), rnorm(11), 1:11))
+test_that("inputs above the memory budget are rejected before allocation", {
+  # Budget for n = 155: kcv() needs one 155 x 155 matrix (192,200 bytes),
+  # kcv_engine() two.
+  withr::local_options(fastkcv.max_gb = 3e-4)
+  meuse <- meuse_df()
+  expect_no_error(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_ok))
+  C <- covariance_matrix(m_ok, as.matrix(meuse[, c("x", "y")]))
+  expect_error(
+    kcv_engine(C, matrix(1, 155, 1), log(meuse$zinc), seq_len(155)),
+    "n = 155 .*2 dense n x n matrices .*fastkcv.max_gb = 0.00039\\)"
+  )
+  expect_error(kcv_engine_prepare(C, matrix(1, 155, 1)), "fastkcv.max_gb")
+  withr::local_options(fastkcv.max_gb = 1e-4)
+  expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_ok),
+    "n = 155 .*1 dense n x n matrix .*memory budget")
+  expect_error(kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse, model = m_ok),
+    "fastkcv.max_gb")
+  expect_error(err_memory(1e5, 2), "about 160 GB.*could not be allocated")
+  expect_error(err_memory(28285, 1), "about 6.5 GB")
 })
