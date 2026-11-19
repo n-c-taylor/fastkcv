@@ -130,17 +130,33 @@ print(do.call(rbind, rows), row.names = FALSE)
 
 # Buffered leave-one-out: each point is held out with every point within
 # `radius` and predicted from the rest. One kcv_prepare() serves all radii.
-# Per point the cost is about m^2 n + m^3 / 3 for a hold-out set of size m,
-# so it grows quickly with the radius. The gstat comparison refits
-# gstat::krige() once per point on the remaining data (n = 1000 only).
-buffer_radii <- list(`1000` = c(0, 25, 50, 100, 200), `5000` = c(0, 25, 50, 100))
+# The blocks Q[I, I] are formed either per point (about m^2 n flops each) or
+# from a cache of Q entries for all pairs within 2 radius (about n flops per
+# pair); kcv_run() picks the cheaper ("auto"). Both strategies are timed
+# here through the internal run_buffer_prepared(). The gstat comparison
+# refits gstat::krige() once per point on the remaining data (n = 1000).
+buffer_radii <- list(`1000` = c(0, 25, 50, 100, 200),
+  `5000` = c(0, 25, 50, 100, 200))
 rows <- list()
 for (ds in datasets[c(2, 4)]) {
   n <- nrow(ds$data)
   p <- kcv_prepare(ds$formula, ~ x + y, ds$data, model = ds$model)
+  y <- p$inp$y
   for (r in buffer_radii[[as.character(n)]]) {
     cat(sprintf("n = %d, buffer = %g ...\n", n, r))
     t_run <- system.time(out <- kcv_run(p, buffer = r))[["elapsed"]]
+    auto <- fastkcv:::run_buffer_prepared(p, y, r)$method
+    t_pairs <- system.time(
+      fastkcv:::run_buffer_prepared(p, y, r, method = "pairs")
+    )[["elapsed"]]
+    # The per-point strategy at n = 5000, r = 200 takes several minutes.
+    t_points <- if (n * r <= 5000 * 100) {
+      system.time(
+        fastkcv:::run_buffer_prepared(p, y, r, method = "points")
+      )[["elapsed"]]
+    } else {
+      NA_real_
+    }
     t_gstat <- NA_real_
     max_diff <- NA_real_
     if (n <= 1000) {
@@ -157,7 +173,8 @@ for (ds in datasets[c(2, 4)]) {
       n = n, radius = r,
       mean_heldout = round(mean(out$n_heldout), 1),
       max_heldout = max(out$n_heldout),
-      kcv_run_s = signif(t_run, 3),
+      kcv_run_s = signif(t_run, 3), auto = auto,
+      pairs_s = signif(t_pairs, 3), points_s = signif(t_points, 3),
       krige_loop_s = signif(t_gstat, 3),
       `krige/kcv` = round(t_gstat / t_run, 1),
       max_abs_diff = signif(max_diff, 2),
@@ -168,7 +185,26 @@ for (ds in datasets[c(2, 4)]) {
 }
 cat("\n")
 print(do.call(rbind, rows), row.names = FALSE)
-cat("(n = 5000, radius 200 is not run: about 630 points per hold-out set.)\n")
+
+# A sample of targets: buffered statistics from 500 of 5000 points.
+ds <- datasets[[4]]
+p <- kcv_prepare(ds$formula, ~ x + y, ds$data, model = ds$model)
+tg <- sample(nrow(ds$data), 500)
+t_tg <- system.time(out_tg <- kcv_run(p, buffer = 200, targets = tg))[["elapsed"]]
+cat(sprintf(
+  "\nn = 5000, radius 200, 500 targets: %.2f s, RMSE %.4f\n",
+  t_tg, kcv_metrics(out_tg)$rmse
+))
+
+# Fold loop and leave-one-out from one factorisation at n = 5000.
+f <- function(folds) {
+  median(replicate(3, system.time(kcv_run(p, folds = folds))[["elapsed"]]))
+}
+cat(sprintf(
+  "kcv_run at n = 5000: LOO %.3f s, 25-fold %.3f s, 5-fold %.3f s\n",
+  f(seq_len(5000)), f(sample(rep(1:25, length.out = 5000))),
+  f(sample(rep(1:5, length.out = 5000)))
+))
 
 # Fold designs from one factorisation: random, 5 x 5 grid blocks, and
 # k-means clusters.

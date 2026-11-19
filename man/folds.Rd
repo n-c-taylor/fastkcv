@@ -61,7 +61,11 @@ blocks are grouped at random into \code{k} folds, each receiving the same
 number of blocks (up to one).
 \item \code{fold_kmeans()} clusters the coordinates with \code{\link[stats:kmeans]{stats::kmeans()}} and makes
 each cluster a fold. The result depends on the random starts, so set a
-seed for reproducibility.
+seed for reproducibility. On large, strongly clustered data the default
+Hartigan-Wong algorithm can reach its internal step limit
+("Quick-TRANSfer stage steps exceeded"); the clustering is then still a
+valid set of folds, possibly not a locally optimal one, so this warning
+is not shown unless \code{algorithm} is given explicitly.
 }
 
 Coordinates are used as given (projected units); all three functions reject

@@ -17,8 +17,8 @@ run_cpp <- function(Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta) {
     .Call(`_fastkcv_run_cpp`, Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta)
 }
 
-run_buffer_cpp <- function(Wr, B, S, G, U, qdiag, F, Y, coords, radius, simple, beta) {
-    .Call(`_fastkcv_run_buffer_cpp`, Wr, B, S, G, U, qdiag, F, Y, coords, radius, simple, beta)
+run_buffer_cpp <- function(Wr, B, S, G, U, qdiag, F, Y, coords, radius, targets, simple, beta, method, max_cache_bytes) {
+    .Call(`_fastkcv_run_buffer_cpp`, Wr, B, S, G, U, qdiag, F, Y, coords, radius, targets, simple, beta, method, max_cache_bytes)
 }
 
 buffer_solve_cpp <- function(Qii, pos) {

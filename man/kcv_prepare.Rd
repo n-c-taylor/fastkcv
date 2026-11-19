@@ -7,7 +7,7 @@
 \usage{
 kcv_prepare(formula, locations, data, model, beta = NULL, ...)
 
-kcv_run(prepared, nfold, folds = NULL, buffer = NULL)
+kcv_run(prepared, nfold, folds = NULL, buffer = NULL, targets = NULL)
 }
 \arguments{
 \item{formula}{Formula defining the response and the trend, e.g.
@@ -42,6 +42,12 @@ precedence over \code{nfold}.}
 units (\eqn{\ge 0}). Each observation is predicted from the observations
 farther than \code{buffer} from it; see "Buffered leave-one-out" below.
 Cannot be combined with \code{nfold} or \code{folds}.}
+
+\item{targets}{Optional, with \code{buffer}: the observations to predict, as
+row numbers or a logical vector of length \code{n}. The hold-out sets are
+still formed from all observations. Useful to estimate buffered
+leave-one-out statistics from a sample of points when the radius is
+large. By default every observation is predicted.}
 }
 \value{
 \code{kcv_prepare()}: a \code{kcv_prepared} object. \code{kcv_run()}: the same

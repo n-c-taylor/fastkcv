@@ -240,3 +240,116 @@ test_that("a numerically singular Q[I, I] names the point", {
     )
   )
 })
+
+test_that("the pair-cache and per-point strategies agree with the oracles", {
+  set.seed(8)
+  n <- 80
+  xy <- matrix(runif(2 * n, 0, 10), ncol = 2)
+  C <- 0.7 * exp(-as.matrix(dist(xy)) / 2.5) + diag(0.3, n)
+  Y <- matrix(rnorm(2 * n), n, 2)
+  F <- cbind(1, xy[, 2], rnorm(n))
+  for (radius in c(0.5, 1.5, 3)) {
+    sets <- buffer_sets_r(xy, radius)
+    for (beta in list(NULL, c(0.1, 0.05, -0.2))) {
+      for (FF in list(F[, 1, drop = FALSE], F)) {
+        if (!is.null(beta) && ncol(FF) != length(beta)) next
+        p <- kcv_engine_prepare(C, FF, beta)
+        p$inp <- list(coords = xy)
+        pr <- run_buffer_prepared(p, Y, radius, method = "pairs")
+        po <- run_buffer_prepared(p, Y, radius, method = "points")
+        expect_identical(pr$method, "pairs")
+        expect_identical(po$method, "points")
+        ref <- kcv_buffer_reference(C, FF, Y, sets, beta)
+        for (r in list(pr, po)) {
+          expect_equal(unname(r$pred), unname(ref$pred), tolerance = tol)
+          expect_equal(r$var, ref$var, tolerance = tol)
+          expect_identical(r$n_heldout, lengths(sets))
+        }
+      }
+    }
+  }
+})
+
+test_that("auto uses the pair cache only when it fits the memory budget", {
+  meuse <- meuse_df()
+  p <- kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse, model = m_buf)
+  y <- p$inp$y
+  expect_identical(run_buffer_prepared(p, y, 400)$method, "pairs")
+  # A budget that only just holds the factorisation leaves no room.
+  withr::local_options(fastkcv.max_gb = 8 * 155^2 / 1e9 + 1e-9)
+  auto <- run_buffer_prepared(p, y, 400)
+  expect_identical(auto$method, "points")
+  # Forcing the cache ignores the budget (internal, for testing).
+  forced <- run_buffer_prepared(p, y, 400, method = "pairs")
+  expect_identical(forced$method, "pairs")
+  expect_equal(forced$pred, auto$pred, tolerance = tol)
+  expect_equal(forced$var, auto$var, tolerance = tol)
+})
+
+test_that("targets returns the target rows of the full run", {
+  meuse <- meuse_df()
+  tg <- c(3L, 40L, 41L, 150L)
+  full <- kcv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m_buf,
+    buffer = 300
+  )
+  a <- kcv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m_buf,
+    buffer = 300, targets = rev(tg)
+  )
+  expect_identical(nrow(a), length(tg))
+  expect_identical(a$fold, tg)
+  expect_equal(a, full[tg, ], tolerance = tol, ignore_attr = TRUE)
+  lg <- seq_len(155) %in% tg
+  p <- kcv_prepare(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m_buf)
+  expect_equal(kcv_run(p, buffer = 300, targets = lg), a, tolerance = tol)
+  # Spatial outputs keep the target geometries.
+  s_f <- kcv(log(zinc) ~ sqrt(dist), meuse_sf(), model = m_buf, buffer = 300,
+    targets = tg
+  )
+  s_p <- kcv(log(zinc) ~ sqrt(dist), meuse_sp(), model = m_buf, buffer = 300,
+    targets = tg
+  )
+  expect_cv_equal(s_f, a)
+  expect_cv_equal(s_p, a)
+  expect_equal(unname(sf::st_coordinates(s_f)),
+    unname(as.matrix(meuse[tg, c("x", "y")])))
+  expect_equal(unname(sp::coordinates(s_p)),
+    unname(as.matrix(meuse[tg, c("x", "y")])))
+  expect_identical(kcv_metrics(a)$n, 4L)
+  # buffer = 0 with targets is plain LOO at those rows.
+  loo <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_buf)
+  b0 <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_buf, buffer = 0,
+    targets = tg
+  )
+  expect_identical(b0$var1.pred, loo$var1.pred[tg])
+})
+
+test_that("targets errors name the original row and invalid targets fail", {
+  meuse <- meuse_df()
+  xy <- as.matrix(meuse[, c("x", "y")])
+  d1 <- sqrt(colSums((t(xy) - xy[1, ])^2))
+  meuse$near <- as.numeric(rank(d1) <= 3)
+  r <- max(d1[meuse$near == 1])
+  # Point 1's buffer removes the covariate; scoring rows 2 and 1 reports 1,
+  # and scoring only rows far away succeeds.
+  expect_error(
+    kcv(log(zinc) ~ near, ~ x + y, meuse, model = m_buf, buffer = r,
+      targets = c(150, 1)
+    ),
+    "Point 1 \\("
+  )
+  far <- which(d1 > 3 * r)[1:5]
+  expect_no_error(kcv(log(zinc) ~ near, ~ x + y, meuse, model = m_buf,
+    buffer = r, targets = far
+  ))
+  m <- function(...) kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_buf, ...)
+  expect_error(m(targets = 1:3), "only be used with `buffer`")
+  expect_error(m(buffer = 10, targets = c(1, 1)), "duplicate")
+  expect_error(m(buffer = 10, targets = c(0, 2)), "row numbers between 1")
+  expect_error(m(buffer = 10, targets = 156), "row numbers between 1")
+  expect_error(m(buffer = 10, targets = c(1, NA)), "row numbers between 1")
+  expect_error(m(buffer = 10, targets = 1.5), "row numbers between 1")
+  expect_error(m(buffer = 10, targets = "a"), "row numbers between 1")
+  expect_error(m(buffer = 10, targets = c(TRUE, FALSE)), "length n = 155")
+  expect_error(m(buffer = 10, targets = rep(FALSE, 155)), "no observations")
+  expect_error(m(buffer = 10, targets = integer(0)), "no observations")
+})

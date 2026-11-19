@@ -20,7 +20,11 @@
 #'   number of blocks (up to one).
 #' * `fold_kmeans()` clusters the coordinates with [stats::kmeans()] and makes
 #'   each cluster a fold. The result depends on the random starts, so set a
-#'   seed for reproducibility.
+#'   seed for reproducibility. On large, strongly clustered data the default
+#'   Hartigan-Wong algorithm can reach its internal step limit
+#'   ("Quick-TRANSfer stage steps exceeded"); the clustering is then still a
+#'   valid set of folds, possibly not a locally optimal one, so this warning
+#'   is not shown unless `algorithm` is given explicitly.
 #'
 #' Coordinates are used as given (projected units); all three functions reject
 #' geographic (longitude/latitude) coordinates, as [kcv()] does.
@@ -143,10 +147,25 @@ fold_kmeans <- function(locations, data = NULL, k, nstart = 10,
   if (k == 1) {
     return(rep(1L, nrow(xy)))
   }
-  as.integer(stats::kmeans(xy,
-    centers = k, nstart = nstart, iter.max = iter.max,
-    ...
-  )$cluster)
+  kmeans_folds(xy, k, nstart = nstart, iter.max = iter.max, ...)
+}
+
+# stats::kmeans() cluster labels. The default Hartigan-Wong algorithm can
+# stop at its Quick-TRANSfer step limit on large clustered data and warn;
+# the clustering it returns is still a valid partition (only possibly not a
+# local optimum), which is all fold assignment needs, so that one warning
+# is muffled unless the user chose the algorithm.
+kmeans_folds <- function(xy, k, ..., .kmeans = stats::kmeans) {
+  muffle <- !"algorithm" %in% names(list(...))
+  res <- withCallingHandlers(
+    .kmeans(xy, centers = k, ...),
+    warning = function(w) {
+      if (muffle && grepl("Quick-TRANSfer", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+  as.integer(res$cluster)
 }
 
 fold_coords <- function(locations, data) {

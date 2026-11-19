@@ -117,3 +117,12 @@ test_that("prepare/run argument errors", {
   expect_error(kcv_run(p, folds = 1:3), "one non-missing value")
   expect_error(kcv_run(p, nfold = 1), "every observation")
 })
+
+test_that("prepared objects in the earlier storage layout are refused", {
+  p <- kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse_df(), model = m_prep)
+  old <- p
+  names(old)[names(old) == "Wt"] <- "W"
+  expect_error(kcv_run(old), "earlier version of fastkcv")
+  expect_error(kcv_engine_run(old, meuse_df()$zinc, 1:155),
+    "earlier version of fastkcv")
+})

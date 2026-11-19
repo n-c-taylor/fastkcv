@@ -133,7 +133,7 @@ new_prepared <- function(res, F, beta, inp, matrices) {
   simple <- !is.null(beta)
   structure(
     list(
-      W = res$W, B = res$B, S = res$S, G = res$G,
+      Wt = res$Wt, B = res$B, S = res$S, G = res$G,
       U = if (simple) matrix(0, 0, 0) else qr.Q(qr(F)),
       qdiag = res$qdiag, F = F,
       beta = if (simple) as.double(beta) else NULL,
@@ -143,22 +143,61 @@ new_prepared <- function(res, F, beta, inp, matrices) {
   )
 }
 
-# Buffered leave-one-out from a prepared factorisation: point i is predicted
-# from the observations farther than `radius` from it.
-run_buffer_prepared <- function(p, y, radius) {
+# Buffered leave-one-out from a prepared factorisation: each target point i
+# (row numbers, all rows by default) is predicted from the observations
+# farther than `radius` from it. `method` ("auto", "pairs" or "points")
+# selects how the blocks Q[I, I] are formed; see run_buffer_cpp().
+run_buffer_prepared <- function(p, y, radius, targets = NULL,
+                                method = c("auto", "pairs", "points")) {
+  method <- match.arg(method)
   storage.mode(y) <- "double"
+  n <- nrow(y)
+  if (is.null(targets)) targets <- seq_len(n)
   simple <- !is.null(p$beta)
+  max_gb <- getOption("fastkcv.max_gb", 6.4)
   res <- run_buffer_cpp(
-    p$W, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, p$inp$coords,
-    as.double(radius), simple, if (simple) p$beta else numeric(0)
+    p$Wt, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, p$inp$coords,
+    as.double(radius), as.integer(targets) - 1L, simple,
+    if (simple) p$beta else numeric(0),
+    match(method, c("auto", "pairs", "points")) - 1L,
+    max(0, max_gb * 1e9 - 8 * as.double(n)^2)
   )
   if (res$status != 0) {
-    raise_buffer_status(res$status, res$fold, res$size, radius, nrow(y))
+    raise_buffer_status(res$status, res$fold, res$size, radius, n)
   }
   pred <- res$pred
-  dimnames(pred) <- dimnames(y)
-  list(pred = pred, var = res$var, folds = seq_len(nrow(y)),
-    n_heldout = res$size)
+  dimnames(pred) <- list(rownames(y)[targets], colnames(y))
+  list(pred = pred, var = res$var, folds = targets,
+    n_heldout = res$size, rows = targets, method = res$method)
+}
+
+# Resolves `targets` to sorted row numbers.
+resolve_targets <- function(targets, n) {
+  if (is.null(targets)) {
+    return(NULL)
+  }
+  if (is.logical(targets)) {
+    if (length(targets) != n || anyNA(targets)) {
+      stop("A logical `targets` must have length n = ", n, " and no ",
+        "missing values.",
+        call. = FALSE
+      )
+    }
+    targets <- which(targets)
+  } else if (!is.numeric(targets) || anyNA(targets) ||
+    any(targets != round(targets)) || any(targets < 1 | targets > n)) {
+    stop("`targets` must be row numbers between 1 and n = ", n,
+      " or a logical vector of length n.",
+      call. = FALSE
+    )
+  }
+  if (anyDuplicated(targets)) {
+    stop("`targets` contains duplicate row numbers.", call. = FALSE)
+  }
+  if (length(targets) == 0) {
+    stop("`targets` selects no observations.", call. = FALSE)
+  }
+  sort(as.integer(targets))
 }
 
 check_buffer <- function(buffer) {
@@ -179,7 +218,7 @@ run_prepared <- function(p, y, folds) {
   labels <- sort(unique(folds))
   fold_idx <- lapply(labels, function(f) which(folds == f) - 1L)
   res <- run_cpp(
-    p$W, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, fold_idx, simple,
+    p$Wt, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, fold_idx, simple,
     if (simple) p$beta else numeric(0)
   )
   if (res$status != 0) {
@@ -206,6 +245,13 @@ check_prepared <- function(x) {
   if (!inherits(x, "kcv_prepared")) {
     stop("`prepared` must be a kcv_prepared object from kcv_prepare() or ",
       "kcv_engine_prepare().",
+      call. = FALSE
+    )
+  }
+  if (is.null(x$Wt)) {
+    stop("`prepared` was made by an earlier version of fastkcv, which ",
+      "stored the factorisation differently; recreate it with ",
+      "kcv_prepare() or kcv_engine_prepare().",
       call. = FALSE
     )
   }

@@ -182,3 +182,39 @@ test_that("fold builders reject invalid arguments", {
   )
   expect_error(fold_blocks(ll, blocks = 2), "longitude/latitude")
 })
+
+test_that("fold_kmeans() hides only the Quick-TRANSfer warning", {
+  xy <- as.matrix(meuse_df()[, c("x", "y")])
+  fake <- function(msg) {
+    function(x, centers, ...) {
+      warning(msg)
+      list(cluster = rep_len(seq_len(centers), nrow(x)))
+    }
+  }
+  qt <- fake("Quick-TRANSfer stage steps exceeded maximum (= 7750)")
+  expect_no_warning(f <- kmeans_folds(xy, 3, .kmeans = qt))
+  expect_identical(f, rep_len(1:3, 155))
+  expect_warning(
+    kmeans_folds(xy, 3, .kmeans = fake("did not converge in 10 iterations")),
+    "did not converge"
+  )
+  expect_warning(
+    kmeans_folds(xy, 3, algorithm = "Hartigan-Wong", .kmeans = qt),
+    "Quick-TRANSfer"
+  )
+})
+
+test_that("fold_kmeans() is quiet on large clustered data", {
+  skip_on_cran()
+  xy <- withr::with_seed(2, rbind(
+    matrix(stats::rnorm(4e4, sd = 5), ncol = 2) +
+      rep(c(0, 500), each = 1e4),
+    matrix(stats::runif(16000, 0, 1000), ncol = 2)
+  ))
+  # This configuration makes stats::kmeans() warn (checked with this seed).
+  expect_warning(withr::with_seed(3, stats::kmeans(xy, 100, nstart = 10,
+    iter.max = 100)), "Quick-TRANSfer")
+  f <- expect_no_warning(withr::with_seed(3, fold_kmeans(xy, k = 100)))
+  is_partition(f, nrow(xy))
+  expect_identical(max(f), 100L)
+})

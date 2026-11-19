@@ -13,6 +13,7 @@ kcv(
   folds = NULL,
   beta = NULL,
   buffer = NULL,
+  targets = NULL,
   ...
 )
 }
@@ -46,6 +47,12 @@ units (\eqn{\ge 0}). Each observation is predicted from the observations
 farther than \code{buffer} from it; see "Buffered leave-one-out" below.
 Cannot be combined with \code{nfold} or \code{folds}.}
 
+\item{targets}{Optional, with \code{buffer}: the observations to predict, as
+row numbers or a logical vector of length \code{n}. The hold-out sets are
+still formed from all observations. Useful to estimate buffered
+leave-one-out statistics from a sample of points when the radius is
+large. By default every observation is predicted.}
+
 \item{...}{Accepted for compatibility with \code{krige.cv()}: \code{verbose} and
 \code{debug.level} are ignored. Local-neighbourhood or block arguments
 (\code{nmax}, \code{nmin}, \code{maxdist}, \code{block}) are not supported and raise an error.}
@@ -58,7 +65,8 @@ coordinate columns appended, an \code{sf} object, or an \code{sp}
 divided by the kriging standard error) and \code{fold}, as in \code{krige.cv()}.
 With \code{buffer}, \code{fold} is the row number (each observation is its own
 hold-out set) and a column \code{n_heldout} gives the number of observations
-held out for it, itself included.
+held out for it, itself included; with \code{targets}, only the target rows
+are returned, in increasing row order.
 }
 \description{
 A drop-in companion to \code{\link[gstat:krige.cv]{gstat::krige.cv()}} for global kriging (every
@@ -83,15 +91,31 @@ optimistic. \code{buffer = 0} gives ordinary leave-one-out exactly.
 
 Hold-out sets of neighbouring points overlap, so each point is a separate
 kriging problem, solved from the same factorisation with a hold-out set
-\eqn{I} of size \eqn{m}. Its cost is about \eqn{m^2 n} operations (to
-form \eqn{Q_{II}}) plus \eqn{m^3 / 3} (to factorise it), so about
-\eqn{n^2 \bar m^2} in total. As \eqn{m} grows with the area of the
-buffer, the cost grows roughly with the fourth power of the radius at fixed
-\eqn{n}: radii that hold out hundreds of points at a time are expensive
-for large \eqn{n}. Besides the prepared factorisation, each point needs
-\eqn{8 m n} bytes of temporary memory (160 MB for \eqn{m = 1000},
-\eqn{n = 20000}). Use \code{\link[=kcv_prepare]{kcv_prepare()}} and \code{\link[=kcv_run]{kcv_run()}} to try several
-radii from one factorisation.
+\eqn{I} of size \eqn{m}, which needs the block \eqn{Q_{II}} of the
+matrix \eqn{Q} described in \code{\link[=kcv_engine]{kcv_engine()}}. Two strategies are used,
+whichever needs fewer operations:
+\itemize{
+\item per point: form \eqn{Q_{II}} directly, about \eqn{m^2 n} operations
+per point and \eqn{8 m n} bytes of temporary memory (160 MB for
+\eqn{m = 1000}, \eqn{n = 20000});
+\item shared pairs: two points in a common hold-out set are at most
+\eqn{2r} apart, so the entries of \eqn{Q} for all pairs of points
+within \eqn{2r} are computed once (about \eqn{n} operations each,
+roughly \eqn{2 \bar m n^2} in total) and each \eqn{Q_{II}} is
+assembled from them. The cache takes 12 bytes per pair (about
+\eqn{24 \bar m n} bytes) and is used only if it fits, together with the
+factorisation, in the \code{fastkcv.max_gb} budget (see \code{\link[=kcv_engine]{kcv_engine()}}).
+}
+
+Each point also needs a Cholesky factorisation of \eqn{Q_{II}}
+(\eqn{m^3 / 3} operations). Since \eqn{m} grows with the area of the
+buffer, large radii are expensive at large \eqn{n}; \code{targets} restricts
+the predictions to a sample of points, at a proportional saving. These
+computations consist of many small matrix operations, which a
+multithreaded BLAS does not speed up and can slow down: with OpenBLAS,
+setting the environment variable \code{OPENBLAS_NUM_THREADS=1} before starting
+R is usually as fast or faster. Use \code{\link[=kcv_prepare]{kcv_prepare()}} and \code{\link[=kcv_run]{kcv_run()}} to try
+several radii from one factorisation.
 
 An error names the first point that cannot be predicted: a buffer that
 holds out every observation, or (universal kriging) one that removes all
@@ -139,4 +163,9 @@ sqrt(mean(cv$residual^2))
 cv_buf <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300)
 summary(cv_buf$n_heldout)
 kcv_metrics(cv_buf)
+
+# The same statistics from a sample of 50 points.
+set.seed(1)
+kcv_metrics(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300,
+  targets = sample(nrow(meuse), 50)))
 }

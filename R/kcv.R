@@ -31,6 +31,11 @@
 #'   units (\eqn{\ge 0}). Each observation is predicted from the observations
 #'   farther than `buffer` from it; see "Buffered leave-one-out" below.
 #'   Cannot be combined with `nfold` or `folds`.
+#' @param targets Optional, with `buffer`: the observations to predict, as
+#'   row numbers or a logical vector of length `n`. The hold-out sets are
+#'   still formed from all observations. Useful to estimate buffered
+#'   leave-one-out statistics from a sample of points when the radius is
+#'   large. By default every observation is predicted.
 #' @param ... Accepted for compatibility with `krige.cv()`: `verbose` and
 #'   `debug.level` are ignored. Local-neighbourhood or block arguments
 #'   (`nmax`, `nmin`, `maxdist`, `block`) are not supported and raise an error.
@@ -42,7 +47,8 @@
 #'   divided by the kriging standard error) and `fold`, as in `krige.cv()`.
 #'   With `buffer`, `fold` is the row number (each observation is its own
 #'   hold-out set) and a column `n_heldout` gives the number of observations
-#'   held out for it, itself included.
+#'   held out for it, itself included; with `targets`, only the target rows
+#'   are returned, in increasing row order.
 #'
 #' @section Buffered leave-one-out:
 #' With `buffer = r`, observation \eqn{i} is held out together with every
@@ -54,15 +60,30 @@
 #'
 #' Hold-out sets of neighbouring points overlap, so each point is a separate
 #' kriging problem, solved from the same factorisation with a hold-out set
-#' \eqn{I} of size \eqn{m}. Its cost is about \eqn{m^2 n} operations (to
-#' form \eqn{Q_{II}}) plus \eqn{m^3 / 3} (to factorise it), so about
-#' \eqn{n^2 \bar m^2} in total. As \eqn{m} grows with the area of the
-#' buffer, the cost grows roughly with the fourth power of the radius at fixed
-#' \eqn{n}: radii that hold out hundreds of points at a time are expensive
-#' for large \eqn{n}. Besides the prepared factorisation, each point needs
-#' \eqn{8 m n} bytes of temporary memory (160 MB for \eqn{m = 1000},
-#' \eqn{n = 20000}). Use [kcv_prepare()] and [kcv_run()] to try several
-#' radii from one factorisation.
+#' \eqn{I} of size \eqn{m}, which needs the block \eqn{Q_{II}} of the
+#' matrix \eqn{Q} described in [kcv_engine()]. Two strategies are used,
+#' whichever needs fewer operations:
+#'
+#' * per point: form \eqn{Q_{II}} directly, about \eqn{m^2 n} operations
+#'   per point and \eqn{8 m n} bytes of temporary memory (160 MB for
+#'   \eqn{m = 1000}, \eqn{n = 20000});
+#' * shared pairs: two points in a common hold-out set are at most
+#'   \eqn{2r} apart, so the entries of \eqn{Q} for all pairs of points
+#'   within \eqn{2r} are computed once (about \eqn{n} operations each,
+#'   roughly \eqn{2 \bar m n^2} in total) and each \eqn{Q_{II}} is
+#'   assembled from them. The cache takes 12 bytes per pair (about
+#'   \eqn{24 \bar m n} bytes) and is used only if it fits, together with the
+#'   factorisation, in the `fastkcv.max_gb` budget (see [kcv_engine()]).
+#'
+#' Each point also needs a Cholesky factorisation of \eqn{Q_{II}}
+#' (\eqn{m^3 / 3} operations). Since \eqn{m} grows with the area of the
+#' buffer, large radii are expensive at large \eqn{n}; `targets` restricts
+#' the predictions to a sample of points, at a proportional saving. These
+#' computations consist of many small matrix operations, which a
+#' multithreaded BLAS does not speed up and can slow down: with OpenBLAS,
+#' setting the environment variable `OPENBLAS_NUM_THREADS=1` before starting
+#' R is usually as fast or faster. Use [kcv_prepare()] and [kcv_run()] to try
+#' several radii from one factorisation.
 #'
 #' An error names the first point that cannot be predicted: a buffer that
 #' holds out every observation, or (universal kriging) one that removes all
@@ -106,14 +127,22 @@
 #' cv_buf <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300)
 #' summary(cv_buf$n_heldout)
 #' kcv_metrics(cv_buf)
+#'
+#' # The same statistics from a sample of 50 points.
+#' set.seed(1)
+#' kcv_metrics(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300,
+#'   targets = sample(nrow(meuse), 50)))
 kcv <- function(formula, locations, data, model, nfold, folds = NULL,
-                beta = NULL, buffer = NULL, ...) {
+                beta = NULL, buffer = NULL, targets = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
   n <- nrow(inp$inp$y)
-  if (!is.null(buffer)) {
-    check_buffer_args(buffer, missing(nfold), folds)
+  if (!is.null(buffer) || !is.null(targets)) {
+    targets <- check_buffer_args(buffer, missing(nfold), folds, targets, n)
     p <- kcv_factor(inp$inp, inp$model, beta)
-    return(build_output(inp$inp, run_buffer_prepared(p, inp$inp$y, buffer)))
+    return(build_output(
+      inp$inp,
+      run_buffer_prepared(p, inp$inp$y, buffer, targets)
+    ))
   }
   fold <- resolve_folds(nfold, folds, n)
   p <- kcv_factor(inp$inp, inp$model, beta)
@@ -158,7 +187,8 @@ kcv_prepare <- function(formula, locations, data, model, beta = NULL, ...) {
 #' @rdname kcv_prepare
 #' @param prepared A `kcv_prepared` object from `kcv_prepare()`.
 #' @export
-kcv_run <- function(prepared, nfold, folds = NULL, buffer = NULL) {
+kcv_run <- function(prepared, nfold, folds = NULL, buffer = NULL,
+                    targets = NULL) {
   check_prepared(prepared)
   if (is.null(prepared$inp)) {
     stop(
@@ -168,18 +198,25 @@ kcv_run <- function(prepared, nfold, folds = NULL, buffer = NULL) {
     )
   }
   n <- nrow(prepared$inp$y)
-  if (!is.null(buffer)) {
-    check_buffer_args(buffer, missing(nfold), folds)
+  if (!is.null(buffer) || !is.null(targets)) {
+    targets <- check_buffer_args(buffer, missing(nfold), folds, targets, n)
     return(build_output(
       prepared$inp,
-      run_buffer_prepared(prepared, prepared$inp$y, buffer)
+      run_buffer_prepared(prepared, prepared$inp$y, buffer, targets)
     ))
   }
   fold <- resolve_folds(nfold, folds, n)
   build_output(prepared$inp, run_prepared(prepared, prepared$inp$y, fold))
 }
 
-check_buffer_args <- function(buffer, nfold_missing, folds) {
+# Checks the buffered leave-one-out arguments; returns the target rows.
+check_buffer_args <- function(buffer, nfold_missing, folds, targets, n) {
+  if (is.null(buffer)) {
+    stop("`targets` can only be used with `buffer` (buffered ",
+      "leave-one-out); use `buffer = 0` for plain leave-one-out.",
+      call. = FALSE
+    )
+  }
   check_buffer(buffer)
   if (!nfold_missing || !is.null(folds)) {
     stop("`buffer` (buffered leave-one-out) cannot be combined with ",
@@ -187,7 +224,7 @@ check_buffer_args <- function(buffer, nfold_missing, folds) {
       call. = FALSE
     )
   }
-  invisible(TRUE)
+  resolve_targets(targets, n)
 }
 
 # Argument checks and input parsing shared by kcv() and kcv_prepare().
@@ -303,6 +340,12 @@ check_dots <- function(...) {
 }
 
 build_output <- function(inp, res) {
+  rows <- res$rows
+  if (!is.null(rows)) {
+    inp$y <- inp$y[rows, , drop = FALSE]
+    inp$coords <- inp$coords[rows, , drop = FALSE]
+    if (!is.null(inp$locations)) inp$locations <- inp$locations[rows, ]
+  }
   observed <- drop(inp$y)
   pred <- drop(res$pred)
   residual <- observed - pred
