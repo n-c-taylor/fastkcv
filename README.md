@@ -72,3 +72,11 @@ Local neighborhoods (`nmax`, `nmin`, `maxdist`), block kriging, unbounded
 variograms, geographic coordinates and re-fitting the variogram in each
 fold are not supported, and give an error. Memory is one n x n matrix
 (8 n^2 bytes, 3.2 GB at n = 20,000), checked before anything is allocated.
+
+## Use of AI tools
+
+This package was developed with the help of an AI coding assistant
+(Anthropic's Claude Opus 5.5), used for writing and reviewing code, tests and
+documentation. The author directed the work and is responsible for the
+package; its results are checked against `gstat::krige.cv()` and
+independent R implementations by the test suite.

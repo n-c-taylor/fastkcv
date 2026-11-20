@@ -2,7 +2,7 @@ Package: fastkcv
 Title: Fast Exact Cross-Validation for Global Kriging
 Version: 0.1.0
 Authors@R: 
-    person("Nicholas", "Taylor", , "74337949+n-c-taylor@users.noreply.github.com", role = c("aut", "cre"))
+    person("Nicholas", "Taylor", , "nicholasclevelandtaylor@gmail.com", role = c("aut", "cre"))
 Description: Fast, exact leave-one-out, k-fold and buffered leave-one-out
     cross-validation for global (unique neighborhood) simple, ordinary
     and universal kriging, computed from a single factorization of the

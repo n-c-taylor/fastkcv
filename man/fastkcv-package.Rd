@@ -17,11 +17,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Nicholas Taylor \email{74337949+n-c-taylor@users.noreply.github.com}
+\strong{Maintainer}: Nicholas Taylor \email{nicholasclevelandtaylor@gmail.com}
 
 Authors:
 \itemize{
-  \item Nicholas Taylor \email{74337949+n-c-taylor@users.noreply.github.com}
+  \item Nicholas Taylor \email{nicholasclevelandtaylor@gmail.com}
 }
 
 }
