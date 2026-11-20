@@ -1,4 +1,8 @@
+# Most comparisons with gstat are skipped on CRAN: nearly all of their time
+# is spent in gstat itself. One comparison per scheme runs everywhere.
+
 test_that("k-fold with a fixed fold vector matches krige.cv", {
+  skip_on_cran()
   meuse <- meuse_df()
   n <- nrow(meuse)
   folds <- withr::with_seed(7, sample(rep(1:5, length.out = n)))
@@ -31,6 +35,7 @@ test_that("random nfold draws the same folds as krige.cv for a given seed", {
 })
 
 test_that("k-fold matches krige.cv for every oracle model and anisotropy", {
+  skip_on_cran()
   meuse <- meuse_df()
   fv <- withr::with_seed(13, sample(rep(1:6, length.out = nrow(meuse))))
   models <- c(oracle_models(),

@@ -1,3 +1,6 @@
+# Most comparisons with gstat are skipped on CRAN: nearly all of their time
+# is spent in gstat itself. One comparison per scheme runs everywhere.
+
 m_buf <- gstat::vgm(0.5, "Sph", 900, 0.1)
 
 # Buffered leave-one-out by brute force with gstat: drop the hold-out set of
@@ -22,6 +25,7 @@ buffer_cases <- function() {
 }
 
 test_that("buffered LOO matches gstat::krige on the remaining data (meuse)", {
+  skip_on_cran()
   meuse <- meuse_df()
   xy <- as.matrix(meuse[, c("x", "y")])
   targets <- seq(1, nrow(meuse), by = 6)
@@ -42,6 +46,7 @@ test_that("buffered LOO matches gstat::krige on the remaining data (meuse)", {
 })
 
 test_that("buffered LOO matches gstat::krige on a simulated field", {
+  skip_on_cran()
   v <- gstat::vgm(1, "Mat", 150, 0.2, kappa = 1.5)
   d <- simulate_field(120, v, seed = 31)
   xy <- as.matrix(d[, c("x", "y")])

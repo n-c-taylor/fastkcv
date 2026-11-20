@@ -40,6 +40,7 @@ test_that("one prepared object serves several fold schemes and input types", {
 })
 
 test_that("random nfold draws the same folds as kcv() and krige.cv()", {
+  skip_on_cran()
   meuse <- meuse_df()
   p <- kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse, model = m_prep)
   a <- withr::with_seed(9, kcv_run(p, nfold = 5))

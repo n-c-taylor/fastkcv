@@ -55,6 +55,7 @@ test_that("fold builders are reproducible under a seed", {
 })
 
 test_that("fold_random() draws the same folds as krige.cv()", {
+  skip_on_cran()
   m <- meuse_df()
   for (k in c(2, 5, 10)) {
     ref <- withr::with_seed(7, krige_cv(log(zinc) ~ 1, ~ x + y, m,
@@ -139,6 +140,7 @@ test_that("fold_kmeans() gives k clusters, as stats::kmeans()", {
 })
 
 test_that("kcv() with spatial folds matches krige.cv()", {
+  skip_on_cran()
   m <- meuse_df()
   v <- gstat::vgm(0.5, "Sph", 900, 0.1)
   for (f in list(

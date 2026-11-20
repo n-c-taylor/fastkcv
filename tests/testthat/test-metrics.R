@@ -32,17 +32,19 @@ test_that("kcv_metrics() matches hand-computed values", {
 })
 
 test_that("interval bounds are inclusive and levels name the columns", {
-  # qnorm((1 + L) / 2) is exactly 1 and 2 for these levels, so |z| = 1 and
-  # |z| = 2 lie exactly on the bounds.
+  # Residuals lie exactly on the half-widths q = qnorm((1 + L) / 2) as this
+  # platform computes them (q * sqrt(1) is exact). The pnorm()/qnorm() round
+  # trip is not exact everywhere: macOS gives qnorm(pnorm(2)) = 2 - 2^-52.
   lv <- 2 * stats::pnorm(c(1, 2)) - 1
-  expect_identical(stats::qnorm((1 + lv) / 2), c(1, 2))
-  m <- kcv_metrics(metrics_example(), level = lv)
+  q <- stats::qnorm((1 + lv) / 2)
+  x <- data.frame(var1.var = 1, residual = c(q[1], -q[1], q[2], -q[2], 0, 3))
+  m <- kcv_metrics(x, level = lv)
   expect_identical(
     names(m)[7:8],
     paste0("coverage_", format(100 * lv, trim = TRUE, drop0trailing = TRUE))
   )
-  expect_equal(m[[7]], 4 / 6, tolerance = tol) # 1, -1, 0.5, 0
-  expect_equal(m[[8]], 1, tolerance = tol) # -2 is on the bound
+  expect_equal(m[[7]], 3 / 6, tolerance = tol) # q1, -q1 on the bound, and 0
+  expect_equal(m[[8]], 5 / 6, tolerance = tol) # all but 3; -q2 on the bound
   expect_named(
     kcv_metrics(metrics_example(), level = c(0.5, 0.99)),
     c("n", "rmse", "mae", "bias", "mean_z", "var_z", "coverage_50",

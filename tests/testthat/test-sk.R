@@ -1,4 +1,18 @@
+# Most comparisons with gstat are skipped on CRAN: nearly all of their time
+# is spent in gstat itself. One comparison per scheme runs everywhere.
+
+test_that("simple kriging with a known trend matches krige.cv", {
+  meuse <- meuse_df()
+  m <- oracle_models()$NugSph
+  expect_cv_equal(
+    kcv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m, beta = c(6.9, -2.2)),
+    krige_cv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m,
+      beta = c(6.9, -2.2))
+  )
+})
+
 test_that("simple kriging with known beta matches krige.cv", {
+  skip_on_cran()
   meuse <- meuse_df()
   cases <- list(
     list(f = log(zinc) ~ 1, beta = 5.9),

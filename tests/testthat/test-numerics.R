@@ -4,6 +4,7 @@
 # give meaningless predictions in both, so those are not compared here).
 
 test_that("Gaussian model without nugget matches krige.cv", {
+  skip_on_cran()
   meuse <- meuse_df()
   for (rg in c(150, 300)) {
     g <- gstat::vgm(0.6, "Gau", rg)
@@ -22,6 +23,7 @@ test_that("Gaussian model without nugget matches krige.cv", {
 })
 
 test_that("a close pair without nugget still matches krige.cv", {
+  skip_on_cran()
   d <- meuse_df()[1:30, ]
   d$x[2] <- d$x[1] + 1
   d$y[2] <- d$y[1]
