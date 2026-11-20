@@ -3,3 +3,6 @@
 ^inst/bench$
 ^CLAUDE\.md$
 ^notes$
+^cran-comments\.md$
+^doc$
+^Meta$

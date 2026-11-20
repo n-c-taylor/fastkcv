@@ -1,6 +1,6 @@
 m_ok <- gstat::vgm(0.5, "Sph", 900, 0.1)
 
-test_that("local-neighbourhood and block arguments are rejected", {
+test_that("local-neighborhood and block arguments are rejected", {
   meuse <- meuse_df()
   for (arg in list(list(nmax = 20), list(nmin = 5), list(maxdist = 500),
                    list(block = c(40, 40)))) {

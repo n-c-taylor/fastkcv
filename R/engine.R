@@ -3,7 +3,7 @@
 #' Low-level engine behind [kcv()], implemented in C++. Given the covariance
 #' matrix `C` of the observations, the trend matrix `F` and fold assignments, it computes
 #' cross-validation predictions and variances for every fold from a single
-#' factorisation of `C`:
+#' factorization of `C`:
 #'
 #' * ordinary/universal kriging (`beta = NULL`, trend re-estimated by GLS in
 #'   each fold): \eqn{Q = C^{-1} - C^{-1}F(F'C^{-1}F)^{-1}F'C^{-1}};
@@ -19,7 +19,7 @@
 #' uses \eqn{e_i = (Qy)_i / Q_{ii}} and \eqn{1 / Q_{ii}} directly.
 #'
 #' @section Memory:
-#' Factorising `C` needs one \eqn{n \times n} workspace in addition to `C`,
+#' Factorizing `C` needs one \eqn{n \times n} workspace in addition to `C`,
 #' so the peak memory of `kcv_engine()` is about \eqn{16 n^2} bytes. (The
 #' model-based [kcv()] builds the covariance directly in the workspace and
 #' needs half of that.) Because operating systems often over-commit memory,
@@ -39,7 +39,7 @@
 #' @return `kcv_engine()` and `kcv_engine_run()` return a list with `pred`
 #'   (n x T matrix), `var` (length-n vector; the same for every column of
 #'   `y`) and `folds`. `kcv_engine_prepare()` returns a `kcv_prepared` object
-#'   holding the factorisation, to be passed to `kcv_engine_run()` any number
+#'   holding the factorization, to be passed to `kcv_engine_run()` any number
 #'   of times with different `y` or `folds`.
 #' @seealso [kcv_prepare()] and [kcv_run()] for the model-based equivalent.
 #' @export
@@ -51,7 +51,7 @@
 #' res <- kcv_engine(C, matrix(1, 50, 1), y, folds = seq_len(50))
 #' head(res$pred)
 #'
-#' # Factorise once, then cross-validate several fold schemes.
+#' # Factorize once, then cross-validate several fold schemes.
 #' p <- kcv_engine_prepare(C, matrix(1, 50, 1))
 #' loo <- kcv_engine_run(p, y, seq_len(50))
 #' k5 <- kcv_engine_run(p, y, rep(1:5, 10))
@@ -74,7 +74,9 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
   }
   check_beta(beta, F)
   check_memory(n, matrices = 2)
-  storage.mode(C) <- "double"
+  # Assigning a storage mode copies C even when it is already double, which
+  # would add a third n x n matrix to the peak.
+  if (!is.double(C)) storage.mode(C) <- "double"
   storage.mode(F) <- "double"
   res <- prepare_matrix_cpp(C, F, !is.null(beta))
   new_prepared(res, F, beta, inp = NULL, matrices = 2)
@@ -125,7 +127,7 @@ print.kcv_prepared <- function(x, ...) {
   invisible(x)
 }
 
-# Wraps the C++ factorisation into a kcv_prepared object.
+# Wraps the C++ factorization into a kcv_prepared object.
 new_prepared <- function(res, F, beta, inp, matrices) {
   if (res$status != 0) {
     raise_status(res$status, NA, nrow(F), matrices)
@@ -143,7 +145,7 @@ new_prepared <- function(res, F, beta, inp, matrices) {
   )
 }
 
-# Buffered leave-one-out from a prepared factorisation: each target point i
+# Buffered leave-one-out from a prepared factorization: each target point i
 # (row numbers, all rows by default) is predicted from the observations
 # farther than `radius` from it. `method` ("auto", "pairs" or "points")
 # selects how the blocks Q[I, I] are formed; see run_buffer_cpp().
@@ -211,12 +213,14 @@ check_buffer <- function(buffer) {
   invisible(TRUE)
 }
 
-# Cross-validates one fold scheme from a prepared factorisation.
+# Cross-validates one fold scheme from a prepared factorization.
 run_prepared <- function(p, y, folds) {
   storage.mode(y) <- "double"
   simple <- !is.null(p$beta)
   labels <- sort(unique(folds))
-  fold_idx <- lapply(labels, function(f) which(folds == f) - 1L)
+  # One pass, in `labels` order (`which(folds == f)` per fold is O(n^2) for
+  # leave-one-out and left about one n x n matrix of garbage).
+  fold_idx <- unname(split(seq_along(folds) - 1L, match(folds, labels)))
   res <- run_cpp(
     p$Wt, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, fold_idx, simple,
     if (simple) p$beta else numeric(0)
@@ -250,7 +254,7 @@ check_prepared <- function(x) {
   }
   if (is.null(x$Wt)) {
     stop("`prepared` was made by an earlier version of fastkcv, which ",
-      "stored the factorisation differently; recreate it with ",
+      "stored the factorization differently; recreate it with ",
       "kcv_prepare() or kcv_engine_prepare().",
       call. = FALSE
     )
@@ -319,7 +323,7 @@ q_parts_r <- function(C, F, y, beta) {
 
 # Hold-out sets of buffered leave-one-out: element i holds the (sorted)
 # indices of the points within Euclidean distance `radius` of point i,
-# including i. Pure R, independent of the C++ neighbour search.
+# including i. Pure R, independent of the C++ neighbor search.
 buffer_sets_r <- function(coords, radius) {
   D <- as.matrix(stats::dist(coords))
   lapply(seq_len(nrow(D)), function(i) which(D[i, ] <= radius))

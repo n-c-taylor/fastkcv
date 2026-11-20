@@ -71,7 +71,7 @@ validate_model <- function(model) {
 #' Covariance matrix from a gstat variogram model
 #'
 #' Builds `C[i, j] = C(s_i - s_j)` where `C(h) = total sill - gamma(h)`, in
-#' C++ (`src/covariance.cpp`) with gstat's model parameterisations. The nugget
+#' C++ (`src/covariance.cpp`) with gstat's model parameterizations. The nugget
 #' contributes only where the lag vector is exactly zero. Each component keeps
 #' its own 2D geometric anisotropy. When `coords2` is omitted the result is
 #' exactly symmetric.
@@ -108,7 +108,7 @@ covariance_matrix <- function(model, coords1, coords2 = NULL) {
 #'
 #' Builds `C[i, j] = C(s_i - s_j)` where `C(h) = total sill - gamma(h)`,
 #' evaluated with [gstat::variogramLine()] (`covariance = TRUE`) so that the
-#' model parameterisation is exactly gstat's. Used to test
+#' model parameterization is exactly gstat's. Used to test
 #' `covariance_matrix()`. The nugget contributes only at
 #' distance exactly zero. Components with 2D geometric anisotropy are handled
 #' by mapping lag vectors to gstat's reduced (isotropic) distance.

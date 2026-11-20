@@ -1,4 +1,4 @@
-// Exact kriging cross-validation from one Cholesky factorisation of C.
+// Exact kriging cross-validation from one Cholesky factorization of C.
 //
 // With C = R'R (R upper triangular), W = R^{-1} and Wt = W' = R^{-T}
 // (lower triangular, the matrix that is stored), C^{-1} = W W' = Wt' Wt. For
@@ -10,7 +10,7 @@
 // columns Wt[, I] contiguous in memory. For simple kriging B, S and G are
 // empty.
 //
-// The work is split in two stages so that one factorisation can serve many
+// The work is split in two stages so that one factorization can serve many
 // fold schemes and responses:
 //   prepare: Wt (overwriting a single n x n buffer), B, S, G and the diagonal
 //            of Q used by leave-one-out;
@@ -52,7 +52,7 @@ Rcpp::List fail_buffer(int status, arma::uword i, arma::uword m) {
 }
 
 // Inverse of a small symmetric positive definite matrix through its
-// Cholesky factor; false if the factorisation fails.
+// Cholesky factor; false if the factorization fails.
 bool fold_inverse(const arma::mat& Qii, arma::mat& V) {
   arma::mat Rq;
   if (!arma::chol(Rq, arma::symmatu(Qii))) return false;
@@ -132,14 +132,25 @@ double q_entry(const arma::mat& Wt, const arma::mat& G, arma::uword j,
   const arma::uword n = Wt.n_rows;
   const double* a = Wt.colptr(j);
   const double* b = Wt.colptr(k);
-  double s = 0.0;
-  for (arma::uword r = k; r < n; ++r) s += a[r] * b[r];
+  // Four independent partial sums: a single running sum is limited by the
+  // latency of each add (the compiler may not reorder a floating-point
+  // reduction), which made this loop the bottleneck of the pair cache.
+  double s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0;
+  arma::uword r = std::max(j, k);
+  for (; r + 4 <= n; r += 4) {
+    s0 += a[r] * b[r];
+    s1 += a[r + 1] * b[r + 1];
+    s2 += a[r + 2] * b[r + 2];
+    s3 += a[r + 3] * b[r + 3];
+  }
+  for (; r < n; ++r) s0 += a[r] * b[r];
+  double s = (s0 + s1) + (s2 + s3);
   if (!simple) s -= arma::dot(G.col(j), G.col(k));
   return s;
 }
 
 // Solves Q[I, I] x = e_pos through the Cholesky factor of Q[I, I], giving
-// the row of Q[I, I]^{-1} for the scored point; false if the factorisation
+// the row of Q[I, I]^{-1} for the scored point; false if the factorization
 // fails.
 bool solve_unit(const arma::mat& Qii, arma::uword pos, arma::vec& x) {
   arma::mat Rq;
@@ -167,7 +178,7 @@ void transpose_inplace(double* a, arma::uword n) {
   }
 }
 
-// Factorises the covariance matrix held in `Wr` in place and returns the
+// Factorizes the covariance matrix held in `Wr` in place and returns the
 // prepared object, or a failure status. With C = R'R, the buffer ends up
 // holding Wt = R^{-T} (lower triangular), so that C^{-1} = Wt' Wt and the
 // rows of W = R^{-1} needed for Q[I, I] are contiguous columns of Wt.
@@ -210,7 +221,7 @@ Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
 // Points within `radius` of point i (Euclidean), from candidates sorted by
 // x: `ord` holds point indices and `xs` their x coordinates. Appends to
 // `out` in arbitrary order.
-void neighbours(const arma::vec& x, const arma::vec& y, const arma::uvec& ord,
+void neighbors(const arma::vec& x, const arma::vec& y, const arma::uvec& ord,
                 const arma::vec& xs, arma::uword i, double radius,
                 std::vector<arma::uword>& out) {
   const double* lo = std::lower_bound(xs.begin(), xs.end(), x[i] - radius);
@@ -226,7 +237,7 @@ void neighbours(const arma::vec& x, const arma::vec& y, const arma::uvec& ord,
 }  // namespace
 
 // Builds the covariance matrix of `coords` directly in the buffer that is
-// then factorised, so only one n x n matrix is ever allocated.
+// then factorized, so only one n x n matrix is ever allocated.
 // [[Rcpp::export]]
 Rcpp::List prepare_model_cpp(const Rcpp::NumericMatrix& coords,
                              const Rcpp::IntegerVector& type,
@@ -247,12 +258,16 @@ Rcpp::List prepare_model_cpp(const Rcpp::NumericMatrix& coords,
   }
 }
 
-// Factorises a user-supplied covariance matrix; C itself is not modified.
+// Factorizes a user-supplied covariance matrix; C itself is not modified.
 // [[Rcpp::export]]
 Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C,
                               const arma::mat& F, bool simple) {
   try {
-    Rcpp::NumericMatrix W = Rcpp::clone(C);
+    // One explicit copy: `W = Rcpp::clone(C)` duplicated the matrix twice
+    // (measured with tracemem), so the peak was three n x n matrices.
+    const int n = C.nrow();
+    Rcpp::NumericMatrix W(Rcpp::no_init(n, n));
+    std::copy(C.begin(), C.end(), W.begin());
     return factor_inplace(W, F, simple);
   } catch (std::bad_alloc&) {
     return fail(6, 0);
@@ -260,7 +275,7 @@ Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C,
 }
 
 // Cross-validation residuals and variances for one fold scheme, from a
-// prepared factorisation. `fold_idx` is a list of 0-based row indices, one
+// prepared factorization. `fold_idx` is a list of 0-based row indices, one
 // element per fold, in the order in which folds are checked.
 // [[Rcpp::export]]
 Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
@@ -333,7 +348,7 @@ Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
 //   pairs:  every pair of points that share a hold-out set lies within
 //           2 radius, so Q[j, k] is computed once for all such pairs (about
 //           n - k flops each) and cached (12 bytes per pair); each block is
-//           then assembled from the cache.
+//           then assembled from the cache by a merge walk per row.
 // Auto picks the cheaper by flop count, using pairs only if the cache fits
 // in `max_cache_bytes`.
 //
@@ -365,7 +380,7 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
     std::vector<std::size_t> off(nt + 1, 0);
     for (arma::uword t = 0; t < nt; ++t) {
       buf.clear();
-      neighbours(x, y, ord, xs, targets[t], radius, buf);
+      neighbors(x, y, ord, xs, targets[t], radius, buf);
       std::sort(buf.begin(), buf.end());
       members.insert(members.end(), buf.begin(), buf.end());
       off[t + 1] = members.size();
@@ -441,7 +456,7 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
         for (arma::uword k = 0; k < nu && fits; ++k) {
           const arma::uword j = uord[k];
           buf.clear();
-          neighbours(x, y, uord, uxs, j, r2, buf);
+          neighbors(x, y, uord, uxs, j, r2, buf);
           std::sort(buf.begin(), buf.end());
           pstart[j] = pidx.size();
           for (arma::uword kk : buf) {
@@ -469,14 +484,6 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
         }
       }
     }
-    auto cached = [&](arma::uword j, arma::uword k) {
-      // j <= k
-      auto b = pidx.begin() + pstart[j], e = pidx.begin() + pend[j];
-      auto it = std::lower_bound(b, e, k);
-      if (it != e && *it == k) return pval[it - pidx.begin()];
-      return q_entry(Wt, G, j, k, simple);
-    };
-
     const arma::mat Qy = compute_Qy(Wt, B, S, G, F, Y, simple, beta);
     arma::mat pred(nt, T);
     arma::vec var(nt);
@@ -494,10 +501,21 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
       while (idx[pos] != i) ++pos;
       arma::mat Qii;
       if (use_pairs) {
+        // Row a: the partners of idx[a] (sorted) are walked in step with
+        // idx[a..m) (also sorted), a linear merge instead of one binary
+        // search per entry (which was the bulk of the time for large m).
         Qii.set_size(m, m);
         for (arma::uword a = 0; a < m; ++a) {
+          const arma::uword j = idx[a];
+          std::size_t c = pstart[j];
+          const std::size_t e = pend[j];
           for (arma::uword b = a; b < m; ++b) {
-            Qii(a, b) = Qii(b, a) = cached(idx[a], idx[b]);
+            const arma::uword k = idx[b];
+            while (c < e && pidx[c] < k) ++c;
+            const double q = (c < e && pidx[c] == k)
+                                 ? pval[c]
+                                 : q_entry(Wt, G, j, k, simple);
+            Qii(a, b) = Qii(b, a) = q;
           }
         }
       } else {

@@ -15,3 +15,5 @@ docs/
 inst/doc/
 /doc/
 /Meta/
+# benchmark caches and logs
+inst/bench/cache/

@@ -1,6 +1,6 @@
 #' Summary statistics of a cross-validation
 #'
-#' Summarises the output of [kcv()] or [kcv_run()] (or of
+#' Summarizes the output of [kcv()] or [kcv_run()] (or of
 #' [gstat::krige.cv()], which has the same columns), overall or per fold.
 #'
 #' With residuals \eqn{e_i} (observed minus predicted), kriging variances
@@ -17,7 +17,7 @@
 #'   observations inside the Gaussian prediction interval
 #'   \eqn{\hat y_i \pm q \sigma_i}, \eqn{q} = `qnorm((1 + L) / 2)`, i.e.
 #'   with \eqn{|z_i| \le q}. Well-calibrated variances give coverage close to
-#'   \eqn{L}. The default levels 50, 80, 90 and 95% probe both the centre and
+#'   \eqn{L}. The default levels 50, 80, 90 and 95% probe both the center and
 #'   the tails of the predictive distribution.
 #'
 #' The z-scores are recomputed from the `residual` and `var1.var` columns.
@@ -88,7 +88,7 @@ kcv_metrics <- function(x, by_fold = FALSE,
   cov_names <- paste0("coverage_", format(100 * level, trim = TRUE,
     drop0trailing = TRUE))
 
-  summarise <- function(e, v) {
+  summarize <- function(e, v) {
     z <- e / sqrt(v)
     out <- data.frame(
       n = length(e),
@@ -105,12 +105,12 @@ kcv_metrics <- function(x, by_fold = FALSE,
   }
 
   if (!by_fold) {
-    return(summarise(e, v))
+    return(summarize(e, v))
   }
   folds <- sort(unique(x$fold))
   rows <- lapply(folds, function(f) {
     i <- which(x$fold == f)
-    summarise(e[i], v[i])
+    summarize(e[i], v[i])
   })
   cbind(fold = folds, do.call(rbind, rows))
 }

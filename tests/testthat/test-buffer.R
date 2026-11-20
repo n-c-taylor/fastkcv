@@ -275,7 +275,7 @@ test_that("auto uses the pair cache only when it fits the memory budget", {
   p <- kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse, model = m_buf)
   y <- p$inp$y
   expect_identical(run_buffer_prepared(p, y, 400)$method, "pairs")
-  # A budget that only just holds the factorisation leaves no room.
+  # A budget that only just holds the factorization leaves no room.
   withr::local_options(fastkcv.max_gb = 8 * 155^2 / 1e9 + 1e-9)
   auto <- run_buffer_prepared(p, y, 400)
   expect_identical(auto$method, "points")

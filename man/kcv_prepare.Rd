@@ -3,7 +3,7 @@
 \name{kcv_prepare}
 \alias{kcv_prepare}
 \alias{kcv_run}
-\title{Factorise once, cross-validate many times}
+\title{Factorize once, cross-validate many times}
 \usage{
 kcv_prepare(formula, locations, data, model, beta = NULL, ...)
 
@@ -55,7 +55,7 @@ output as \code{\link[=kcv]{kcv()}}.
 }
 \description{
 \code{kcv_prepare()} does the expensive part of \code{\link[=kcv]{kcv()}} (building and
-factorising the covariance matrix, which depends only on the locations,
+factorizing the covariance matrix, which depends only on the locations,
 the variogram model and the trend) and returns it as an object.
 \code{kcv_run()} then computes the cross-validation for one fold scheme from
 it, at a fraction of the cost. \code{kcv(...)} is equivalent to
@@ -74,7 +74,7 @@ loo <- kcv_run(p)
 set.seed(1)
 rmse_10fold <- replicate(5, sqrt(mean(kcv_run(p, nfold = 10)$residual^2)))
 rmse_10fold
-# Buffered leave-one-out at several radii from the same factorisation.
+# Buffered leave-one-out at several radii from the same factorization.
 sapply(c(0, 200, 400), function(r) kcv_metrics(kcv_run(p, buffer = r))$rmse)
 }
 \seealso{

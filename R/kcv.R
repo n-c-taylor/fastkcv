@@ -1,13 +1,13 @@
 #' Fast exact cross-validation for global kriging
 #'
 #' A drop-in companion to [gstat::krige.cv()] for global kriging (every
-#' observation in the kriging neighbourhood). Instead of refitting the kriging
-#' system once per fold, `kcv()` factorises the covariance matrix once and
+#' observation in the kriging neighborhood). Instead of refitting the kriging
+#' system once per fold, `kcv()` factorizes the covariance matrix once and
 #' obtains every fold's predictions and variances from it. Results match
 #' `krige.cv()` to numerical precision.
 #'
 #' Ordinary kriging (`formula = z ~ 1`) and universal kriging (`z ~ x + y`,
-#' external drift, ...) re-estimate the trend by generalised least squares in
+#' external drift, ...) re-estimate the trend by generalized least squares in
 #' each fold, as gstat does. Simple kriging is used when `beta` is supplied.
 #'
 #' @param formula Formula defining the response and the trend, e.g.
@@ -37,7 +37,7 @@
 #'   leave-one-out statistics from a sample of points when the radius is
 #'   large. By default every observation is predicted.
 #' @param ... Accepted for compatibility with `krige.cv()`: `verbose` and
-#'   `debug.level` are ignored. Local-neighbourhood or block arguments
+#'   `debug.level` are ignored. Local-neighborhood or block arguments
 #'   (`nmax`, `nmin`, `maxdist`, `block`) are not supported and raise an error.
 #'
 #' @return An object of the same kind as the input (a data.frame with the
@@ -55,11 +55,11 @@
 #' observation within Euclidean distance \eqn{r} of it (distance
 #' \eqn{\le r}, computed on the coordinates as given, without any variogram
 #' anisotropy), and only \eqn{i} is predicted and reported. This removes the
-#' spatially correlated neighbours that make ordinary leave-one-out
+#' spatially correlated neighbors that make ordinary leave-one-out
 #' optimistic. `buffer = 0` gives ordinary leave-one-out exactly.
 #'
-#' Hold-out sets of neighbouring points overlap, so each point is a separate
-#' kriging problem, solved from the same factorisation with a hold-out set
+#' Hold-out sets of neighboring points overlap, so each point is a separate
+#' kriging problem, solved from the same factorization with a hold-out set
 #' \eqn{I} of size \eqn{m}, which needs the block \eqn{Q_{II}} of the
 #' matrix \eqn{Q} described in [kcv_engine()]. Two strategies are used,
 #' whichever needs fewer operations:
@@ -73,9 +73,9 @@
 #'   roughly \eqn{2 \bar m n^2} in total) and each \eqn{Q_{II}} is
 #'   assembled from them. The cache takes 12 bytes per pair (about
 #'   \eqn{24 \bar m n} bytes) and is used only if it fits, together with the
-#'   factorisation, in the `fastkcv.max_gb` budget (see [kcv_engine()]).
+#'   factorization, in the `fastkcv.max_gb` budget (see [kcv_engine()]).
 #'
-#' Each point also needs a Cholesky factorisation of \eqn{Q_{II}}
+#' Each point also needs a Cholesky factorization of \eqn{Q_{II}}
 #' (\eqn{m^3 / 3} operations). Since \eqn{m} grows with the area of the
 #' buffer, large radii are expensive at large \eqn{n}; `targets` restricts
 #' the predictions to a sample of points, at a proportional saving. These
@@ -83,7 +83,7 @@
 #' multithreaded BLAS does not speed up and can slow down: with OpenBLAS,
 #' setting the environment variable `OPENBLAS_NUM_THREADS=1` before starting
 #' R is usually as fast or faster. Use [kcv_prepare()] and [kcv_run()] to try
-#' several radii from one factorisation.
+#' several radii from one factorization.
 #'
 #' An error names the first point that cannot be predicted: a buffer that
 #' holds out every observation, or (universal kriging) one that removes all
@@ -91,13 +91,13 @@
 #' one level of a factor.
 #'
 #' @section Performance:
-#' Almost all of the time goes into one dense Cholesky factorisation and
+#' Almost all of the time goes into one dense Cholesky factorization and
 #' triangular inverse, which R delegates to its BLAS/LAPACK libraries. The
 #' reference BLAS shipped with many R builds is single-threaded and slow; an
-#' optimised BLAS is typically many times faster on these operations. Check
+#' optimized BLAS is typically many times faster on these operations. Check
 #' which one R uses with `extSoftVersion()["BLAS"]` or `sessionInfo()`.
 #'
-#' * Linux (Debian/Ubuntu): install an optimised BLAS such as OpenBLAS
+#' * Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
 #'   (`sudo apt install libopenblas0-pthread`); the system's alternatives
 #'   mechanism switches R to it without reinstalling anything.
 #' * macOS: the CRAN build of R can use Apple's Accelerate framework; see the
@@ -109,7 +109,7 @@
 #' several R processes in parallel, limit the threads (for OpenBLAS, the
 #' environment variable `OPENBLAS_NUM_THREADS`).
 #'
-#' The factorisation depends only on the locations, the model and the trend,
+#' The factorization depends only on the locations, the model and the trend,
 #' not on the folds. To cross-validate several fold schemes for the same
 #' data, call [kcv_prepare()] once and [kcv_run()] for each scheme.
 #'
@@ -123,7 +123,7 @@
 #' head(cv)
 #' sqrt(mean(cv$residual^2))
 #'
-#' # Buffered leave-one-out: neighbours within 300 m are held out too.
+#' # Buffered leave-one-out: neighbors within 300 m are held out too.
 #' cv_buf <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300)
 #' summary(cv_buf$n_heldout)
 #' kcv_metrics(cv_buf)
@@ -149,10 +149,10 @@ kcv <- function(formula, locations, data, model, nfold, folds = NULL,
   build_output(inp$inp, run_prepared(p, inp$inp$y, fold))
 }
 
-#' Factorise once, cross-validate many times
+#' Factorize once, cross-validate many times
 #'
 #' `kcv_prepare()` does the expensive part of [kcv()] (building and
-#' factorising the covariance matrix, which depends only on the locations,
+#' factorizing the covariance matrix, which depends only on the locations,
 #' the variogram model and the trend) and returns it as an object.
 #' `kcv_run()` then computes the cross-validation for one fold scheme from
 #' it, at a fraction of the cost. `kcv(...)` is equivalent to
@@ -177,7 +177,7 @@ kcv <- function(formula, locations, data, model, nfold, folds = NULL,
 #' set.seed(1)
 #' rmse_10fold <- replicate(5, sqrt(mean(kcv_run(p, nfold = 10)$residual^2)))
 #' rmse_10fold
-#' # Buffered leave-one-out at several radii from the same factorisation.
+#' # Buffered leave-one-out at several radii from the same factorization.
 #' sapply(c(0, 200, 400), function(r) kcv_metrics(kcv_run(p, buffer = r))$rmse)
 kcv_prepare <- function(formula, locations, data, model, beta = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
@@ -251,8 +251,8 @@ kcv_inputs <- function(formula, locations, data, model, beta, ...) {
   list(inp = inp, model = model)
 }
 
-# Builds the covariance directly in the factorisation buffer (one n x n
-# matrix) and factorises it.
+# Builds the covariance directly in the factorization buffer (one n x n
+# matrix) and factorizes it.
 kcv_factor <- function(inp, model, beta) {
   n <- nrow(inp$y)
   check_memory(n, matrices = 1)
@@ -322,9 +322,9 @@ check_dots <- function(...) {
     stop(
       "Argument(s) ", paste0("`", local_args, "`", collapse = ", "),
       " are not supported. fastkcv performs global kriging (every ",
-      "observation in the neighbourhood) with point support; local ",
-      "neighbourhoods and block kriging change the kriging system for each ",
-      "prediction, so the single-factorisation shortcut does not apply. ",
+      "observation in the neighborhood) with point support; local ",
+      "neighborhoods and block kriging change the kriging system for each ",
+      "prediction, so the single-factorization shortcut does not apply. ",
       "Use gstat::krige.cv() for those.",
       call. = FALSE
     )

@@ -1,22 +1,32 @@
 Package: fastkcv
 Title: Fast Exact Cross-Validation for Global Kriging
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: 
     person("Nicholas", "Taylor", , "74337949+n-c-taylor@users.noreply.github.com", role = c("aut", "cre"))
-Description: Fast, exact leave-one-out and k-fold cross-validation for
-    global (unique neighbourhood) simple, ordinary and universal kriging,
-    computed from a single factorization of the covariance matrix.
-    Designed as a companion to gstat::krige.cv(), reproducing its output
-    to numerical precision.
+Description: Fast, exact leave-one-out, k-fold and buffered leave-one-out
+    cross-validation for global (unique neighborhood) simple, ordinary
+    and universal kriging, computed from a single factorization of the
+    covariance matrix (Dubrule (1983) <doi:10.1007/BF01033232>; Ginsbourger
+    and Schärer (2024) <doi:10.1080/10618600.2024.2353633>). Takes the
+    same inputs as 'gstat' krige.cv() and reproduces its output to
+    numerical precision, with nugget effects, nested and anisotropic
+    variogram models. Includes random, spatial block and k-means fold
+    builders and summary statistics for comparing fold designs.
 License: MIT + file LICENSE
+URL: https://github.com/n-c-taylor/fastkcv
+BugReports: https://github.com/n-c-taylor/fastkcv/issues
 Config/roxygen2/version: 8.1.1
 Encoding: UTF-8
+Language: en-US
 Roxygen: list(markdown = TRUE)
 Suggests: 
     bench,
+    knitr,
+    rmarkdown,
     testthat (>= 3.0.0),
     withr
 Config/testthat/edition: 3
+VignetteBuilder: knitr
 Imports: 
     gstat,
     methods,

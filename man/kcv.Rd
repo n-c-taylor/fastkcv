@@ -54,7 +54,7 @@ leave-one-out statistics from a sample of points when the radius is
 large. By default every observation is predicted.}
 
 \item{...}{Accepted for compatibility with \code{krige.cv()}: \code{verbose} and
-\code{debug.level} are ignored. Local-neighbourhood or block arguments
+\code{debug.level} are ignored. Local-neighborhood or block arguments
 (\code{nmax}, \code{nmin}, \code{maxdist}, \code{block}) are not supported and raise an error.}
 }
 \value{
@@ -70,14 +70,14 @@ are returned, in increasing row order.
 }
 \description{
 A drop-in companion to \code{\link[gstat:krige.cv]{gstat::krige.cv()}} for global kriging (every
-observation in the kriging neighbourhood). Instead of refitting the kriging
-system once per fold, \code{kcv()} factorises the covariance matrix once and
+observation in the kriging neighborhood). Instead of refitting the kriging
+system once per fold, \code{kcv()} factorizes the covariance matrix once and
 obtains every fold's predictions and variances from it. Results match
 \code{krige.cv()} to numerical precision.
 }
 \details{
 Ordinary kriging (\code{formula = z ~ 1}) and universal kriging (\code{z ~ x + y},
-external drift, ...) re-estimate the trend by generalised least squares in
+external drift, ...) re-estimate the trend by generalized least squares in
 each fold, as gstat does. Simple kriging is used when \code{beta} is supplied.
 }
 \section{Buffered leave-one-out}{
@@ -86,11 +86,11 @@ With \code{buffer = r}, observation \eqn{i} is held out together with every
 observation within Euclidean distance \eqn{r} of it (distance
 \eqn{\le r}, computed on the coordinates as given, without any variogram
 anisotropy), and only \eqn{i} is predicted and reported. This removes the
-spatially correlated neighbours that make ordinary leave-one-out
+spatially correlated neighbors that make ordinary leave-one-out
 optimistic. \code{buffer = 0} gives ordinary leave-one-out exactly.
 
-Hold-out sets of neighbouring points overlap, so each point is a separate
-kriging problem, solved from the same factorisation with a hold-out set
+Hold-out sets of neighboring points overlap, so each point is a separate
+kriging problem, solved from the same factorization with a hold-out set
 \eqn{I} of size \eqn{m}, which needs the block \eqn{Q_{II}} of the
 matrix \eqn{Q} described in \code{\link[=kcv_engine]{kcv_engine()}}. Two strategies are used,
 whichever needs fewer operations:
@@ -104,10 +104,10 @@ within \eqn{2r} are computed once (about \eqn{n} operations each,
 roughly \eqn{2 \bar m n^2} in total) and each \eqn{Q_{II}} is
 assembled from them. The cache takes 12 bytes per pair (about
 \eqn{24 \bar m n} bytes) and is used only if it fits, together with the
-factorisation, in the \code{fastkcv.max_gb} budget (see \code{\link[=kcv_engine]{kcv_engine()}}).
+factorization, in the \code{fastkcv.max_gb} budget (see \code{\link[=kcv_engine]{kcv_engine()}}).
 }
 
-Each point also needs a Cholesky factorisation of \eqn{Q_{II}}
+Each point also needs a Cholesky factorization of \eqn{Q_{II}}
 (\eqn{m^3 / 3} operations). Since \eqn{m} grows with the area of the
 buffer, large radii are expensive at large \eqn{n}; \code{targets} restricts
 the predictions to a sample of points, at a proportional saving. These
@@ -115,7 +115,7 @@ computations consist of many small matrix operations, which a
 multithreaded BLAS does not speed up and can slow down: with OpenBLAS,
 setting the environment variable \code{OPENBLAS_NUM_THREADS=1} before starting
 R is usually as fast or faster. Use \code{\link[=kcv_prepare]{kcv_prepare()}} and \code{\link[=kcv_run]{kcv_run()}} to try
-several radii from one factorisation.
+several radii from one factorization.
 
 An error names the first point that cannot be predicted: a buffer that
 holds out every observation, or (universal kriging) one that removes all
@@ -125,13 +125,13 @@ one level of a factor.
 
 \section{Performance}{
 
-Almost all of the time goes into one dense Cholesky factorisation and
+Almost all of the time goes into one dense Cholesky factorization and
 triangular inverse, which R delegates to its BLAS/LAPACK libraries. The
 reference BLAS shipped with many R builds is single-threaded and slow; an
-optimised BLAS is typically many times faster on these operations. Check
+optimized BLAS is typically many times faster on these operations. Check
 which one R uses with \code{extSoftVersion()["BLAS"]} or \code{sessionInfo()}.
 \itemize{
-\item Linux (Debian/Ubuntu): install an optimised BLAS such as OpenBLAS
+\item Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
 (\verb{sudo apt install libopenblas0-pthread}); the system's alternatives
 mechanism switches R to it without reinstalling anything.
 \item macOS: the CRAN build of R can use Apple's Accelerate framework; see the
@@ -144,7 +144,7 @@ Multithreaded BLAS libraries use all cores by default; when running
 several R processes in parallel, limit the threads (for OpenBLAS, the
 environment variable \code{OPENBLAS_NUM_THREADS}).
 
-The factorisation depends only on the locations, the model and the trend,
+The factorization depends only on the locations, the model and the trend,
 not on the folds. To cross-validate several fold schemes for the same
 data, call \code{\link[=kcv_prepare]{kcv_prepare()}} once and \code{\link[=kcv_run]{kcv_run()}} for each scheme.
 
@@ -159,7 +159,7 @@ cv <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v)
 head(cv)
 sqrt(mean(cv$residual^2))
 
-# Buffered leave-one-out: neighbours within 300 m are held out too.
+# Buffered leave-one-out: neighbors within 300 m are held out too.
 cv_buf <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300)
 summary(cv_buf$n_heldout)
 kcv_metrics(cv_buf)

@@ -31,14 +31,14 @@ cross-validated with the same kriging weights.}
 \code{kcv_engine()} and \code{kcv_engine_run()} return a list with \code{pred}
 (n x T matrix), \code{var} (length-n vector; the same for every column of
 \code{y}) and \code{folds}. \code{kcv_engine_prepare()} returns a \code{kcv_prepared} object
-holding the factorisation, to be passed to \code{kcv_engine_run()} any number
+holding the factorization, to be passed to \code{kcv_engine_run()} any number
 of times with different \code{y} or \code{folds}.
 }
 \description{
 Low-level engine behind \code{\link[=kcv]{kcv()}}, implemented in C++. Given the covariance
 matrix \code{C} of the observations, the trend matrix \code{F} and fold assignments, it computes
 cross-validation predictions and variances for every fold from a single
-factorisation of \code{C}:
+factorization of \code{C}:
 }
 \details{
 \itemize{
@@ -58,7 +58,7 @@ uses \eqn{e_i = (Qy)_i / Q_{ii}} and \eqn{1 / Q_{ii}} directly.
 }
 \section{Memory}{
 
-Factorising \code{C} needs one \eqn{n \times n} workspace in addition to \code{C},
+Factorizing \code{C} needs one \eqn{n \times n} workspace in addition to \code{C},
 so the peak memory of \code{kcv_engine()} is about \eqn{16 n^2} bytes. (The
 model-based \code{\link[=kcv]{kcv()}} builds the covariance directly in the workspace and
 needs half of that.) Because operating systems often over-commit memory,
@@ -78,7 +78,7 @@ y <- rnorm(50)
 res <- kcv_engine(C, matrix(1, 50, 1), y, folds = seq_len(50))
 head(res$pred)
 
-# Factorise once, then cross-validate several fold schemes.
+# Factorize once, then cross-validate several fold schemes.
 p <- kcv_engine_prepare(C, matrix(1, 50, 1))
 loo <- kcv_engine_run(p, y, seq_len(50))
 k5 <- kcv_engine_run(p, y, rep(1:5, 10))

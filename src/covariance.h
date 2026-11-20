@@ -3,7 +3,7 @@
 
 // Covariance matrices C(h) = total sill - gamma(h) for gstat variogram models.
 //
-// Parameterisations follow gstat (checked against
+// Parameterizations follow gstat (checked against
 // gstat::variogramLine(covariance = TRUE)); with a = range, h the
 // (anisotropy-reduced) lag distance and k = kappa, the correlation of each
 // component is
@@ -12,7 +12,7 @@
 //   Sph  1 - 1.5 h/a + 0.5 (h/a)^3 for h < a, else 0
 //   Gau  exp(-(h / a)^2)
 //   Mat  x^k K_k(x) / (2^(k-1) Gamma(k)),  x = h / a
-//   Ste  as Mat with x = 2 sqrt(k) h / a  (Stein's parameterisation)
+//   Ste  as Mat with x = 2 sqrt(k) h / a  (Stein's parameterization)
 // Mat and Ste are evaluated on the log scale with the exponentially scaled
 // Bessel function, which stays finite where the direct product
 // x^k * K_k(x) underflows times overflows (large kappa, small lags); where

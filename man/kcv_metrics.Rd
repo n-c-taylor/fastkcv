@@ -23,7 +23,7 @@ A data.frame with columns \code{n}, \code{rmse}, \code{mae}, \code{bias}, \code{
 \code{by_fold = TRUE}.
 }
 \description{
-Summarises the output of \code{\link[=kcv]{kcv()}} or \code{\link[=kcv_run]{kcv_run()}} (or of
+Summarizes the output of \code{\link[=kcv]{kcv()}} or \code{\link[=kcv_run]{kcv_run()}} (or of
 \code{\link[gstat:krige.cv]{gstat::krige.cv()}}, which has the same columns), overall or per fold.
 }
 \details{
@@ -41,7 +41,7 @@ is \code{NA} for a fold with a single observation;
 observations inside the Gaussian prediction interval
 \eqn{\hat y_i \pm q \sigma_i}, \eqn{q} = \code{qnorm((1 + L) / 2)}, i.e.
 with \eqn{|z_i| \le q}. Well-calibrated variances give coverage close to
-\eqn{L}. The default levels 50, 80, 90 and 95\% probe both the centre and
+\eqn{L}. The default levels 50, 80, 90 and 95\% probe both the center and
 the tails of the predictive distribution.
 }
 

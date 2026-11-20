@@ -83,7 +83,7 @@ test_that("prepared objects survive saveRDS()", {
   expect_identical(kcv_run(q, folds = folds), kcv_run(p, folds = folds))
 })
 
-test_that("print method summarises the prepared object", {
+test_that("print method summarizes the prepared object", {
   meuse <- meuse_df()
   expect_output(print(kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse,
     model = m_prep)), "ordinary kriging, n = 155, p = 1")
