@@ -163,3 +163,24 @@ test_that("Matern with large kappa stays finite where gstat returns NaN", {
   ok <- is.finite(covariance_matrix_r(m, xy3))
   expect_equal(C[ok], covariance_matrix_r(m, xy3)[ok], tolerance = tol)
 })
+
+test_that("Ste with large kappa approaches the Gaussian model", {
+  # An independent check of the large-kappa evaluation (the test above
+  # re-derives the same log-scale formula): Ste(kappa, a) uses
+  # x = 2 sqrt(kappa) h / a and converges to Gau(a) as kappa grows, with an
+  # error of order 1 / kappa (hence the loose tolerance). Mat with range
+  # a / (2 sqrt(kappa)) is the same function.
+  xy3 <- cbind(c(0, 1e-3, 0.5, 10, 50, 150, 300), 0)
+  gau <- covariance_matrix(gstat::vgm(1, "Gau", 200), xy3)
+  err <- vapply(c(50, 200), function(k) {
+    ste <- covariance_matrix(gstat::vgm(1, "Ste", 200, kappa = k), xy3)
+    mat <- covariance_matrix(
+      gstat::vgm(1, "Mat", 200 / (2 * sqrt(k)), kappa = k), xy3
+    )
+    expect_equal(mat, ste, tolerance = tol)
+    max(abs(ste - gau))
+  }, numeric(1))
+  expect_lt(err[1], 0.25 / 50)
+  expect_lt(err[2], 0.25 / 200)
+  expect_lt(err[2], err[1] / 3)
+})

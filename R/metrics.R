@@ -65,9 +65,9 @@ kcv_metrics <- function(x, by_fold = FALSE,
     stop("`by_fold` must be TRUE or FALSE.", call. = FALSE)
   }
   if (!is.numeric(level) || length(level) == 0 || anyNA(level) ||
-    any(level <= 0 | level >= 1)) {
-    stop("`level` must be a numeric vector of levels strictly between 0 ",
-      "and 1.",
+    any(level <= 0 | level >= 1) || anyDuplicated(level)) {
+    stop("`level` must be a numeric vector of distinct levels strictly ",
+      "between 0 and 1.",
       call. = FALSE
     )
   }

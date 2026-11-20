@@ -29,3 +29,26 @@ test_that("random nfold draws the same folds as krige.cv for a given seed", {
   gs <- withr::with_seed(11, krige_cv(log(zinc) ~ 1, ~ x + y, meuse, model = m, nfold = 5))
   expect_cv_equal(ours, gs)
 })
+
+test_that("k-fold matches krige.cv for every oracle model and anisotropy", {
+  meuse <- meuse_df()
+  fv <- withr::with_seed(13, sample(rep(1:6, length.out = nrow(meuse))))
+  models <- c(oracle_models(),
+    Aniso = list(gstat::vgm(0.4, "Exp", 500, 0.1, anis = c(30, 0.5),
+      add.to = gstat::vgm(0.2, "Gau", 200, anis = c(120, 0.7))))
+  )
+  for (m in models) {
+    for (f in oracle_formulas()) {
+      expect_cv_equal(
+        kcv(f, ~ x + y, meuse, model = m, folds = fv),
+        krige_cv(f, ~ x + y, meuse, model = m, nfold = fv)
+      )
+    }
+    expect_cv_equal(
+      kcv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m,
+        beta = c(6.9, -2.2), folds = fv),
+      krige_cv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = m,
+        beta = c(6.9, -2.2), nfold = fv)
+    )
+  }
+})

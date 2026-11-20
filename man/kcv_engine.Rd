@@ -13,7 +13,8 @@ kcv_engine_prepare(C, F, beta = NULL)
 kcv_engine_run(prepared, y, folds)
 }
 \arguments{
-\item{C}{n x n covariance matrix of the observations (positive definite).}
+\item{C}{n x n covariance matrix of the observations (symmetric positive
+definite; an asymmetric matrix is an error).}
 
 \item{F}{n x p trend matrix (a column of ones for ordinary kriging).}
 

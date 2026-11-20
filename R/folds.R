@@ -96,7 +96,7 @@ fold_blocks <- function(locations, data = NULL, blocks = NULL, size = NULL,
       any(blocks < 1) || any(blocks != round(blocks))) {
       stop("`blocks` must be one or two positive integers.", call. = FALSE)
     }
-    nb <- rep_len(as.integer(blocks), 2)
+    nb <- rep_len(as.double(blocks), 2)
     width <- ext / nb
   } else {
     if (!is.numeric(size) || !length(size) %in% 1:2 || anyNA(size) ||
@@ -104,17 +104,24 @@ fold_blocks <- function(locations, data = NULL, blocks = NULL, size = NULL,
       stop("`size` must be one or two positive numbers.", call. = FALSE)
     }
     width <- rep_len(as.double(size), 2)
-    nb <- pmax(1L, as.integer(ceiling(ext / width)))
+    nb <- pmax(1, ceiling(ext / width))
   }
+  if (prod(nb) > 2^53) {
+    stop("The grid has too many cells; use larger `size` or fewer `blocks`.",
+      call. = FALSE
+    )
+  }
+  # Cell numbers in double arithmetic (exact up to 2^53): with small cells
+  # the counts and their product overflow integers.
   cell_index <- function(v, lo, width, nb) {
-    if (nb == 1L || width == 0) {
-      return(rep(1L, length(v)))
+    if (nb == 1 || width == 0) {
+      return(rep(1, length(v)))
     }
-    pmin(pmax(as.integer(floor((v - lo) / width)) + 1L, 1L), nb)
+    pmin(pmax(floor((v - lo) / width) + 1, 1), nb)
   }
   ix <- cell_index(xy[, 1], lo[1], width[1], nb[1])
   iy <- cell_index(xy[, 2], lo[2], width[2], nb[2])
-  cell <- (iy - 1L) * nb[1] + ix
+  cell <- (iy - 1) * nb[1] + ix
   block <- match(cell, sort(unique(cell)))
   if (is.null(k)) {
     return(block)

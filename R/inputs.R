@@ -44,6 +44,7 @@ parse_inputs <- function(formula, locations, data) {
   if (anyNA(F)) {
     stop("Trend covariates in `formula` contain missing values.", call. = FALSE)
   }
+  check_trend(F)
   attr(F, "assign") <- NULL
   attr(F, "contrasts") <- NULL
 
@@ -136,7 +137,7 @@ parse_coords <- function(locations, data, matrix_ok = FALSE,
   coord_names <- colnames(coords)
   coords <- unname(as.matrix(coords))
   storage.mode(coords) <- "double"
-  if (anyNA(coords) || any(!is.finite(coords))) {
+  if (any(!is.finite(coords))) {
     stop("Coordinates contain missing or non-finite values.", call. = FALSE)
   }
   list(coords = coords, coord_names = coord_names, kind = kind, df = df)

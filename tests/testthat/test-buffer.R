@@ -353,3 +353,42 @@ test_that("targets errors name the original row and invalid targets fail", {
   expect_error(m(buffer = 10, targets = rep(FALSE, 155)), "no observations")
   expect_error(m(buffer = 10, targets = integer(0)), "no observations")
 })
+
+test_that("a point at distance about r is held out from both sides", {
+  # x[i] + r rounds below x[j] although the distance test accepts j, so the
+  # x prefilter used to drop j from i's set (but not i from j's).
+  xi <- -12.917385902255774
+  r <- 18.62176014110446
+  xj <- 5.7043742388486871
+  expect_lte(sqrt((xj - xi)^2), r)
+  expect_lt(xi + r, xj)
+  d <- data.frame(
+    x = c(xi, xj, 200, 400, 600, 300), y = c(0, 0, 100, 50, 300, 500),
+    z = c(1, 2, 3, 2, 1, 4)
+  )
+  v <- gstat::vgm(1, "Exp", 100, 0.1)
+  out <- kcv(z ~ 1, ~ x + y, d, model = v, buffer = r)
+  sets <- buffer_sets_r(as.matrix(d[, c("x", "y")]), r)
+  expect_identical(out$n_heldout, lengths(sets))
+  expect_identical(out$n_heldout[1:2], c(2L, 2L))
+  ref <- krige_buffer(z ~ 1, d, v, sets, 1:6)
+  expect_equal(out$var1.pred, ref$pred, tolerance = tol)
+  expect_equal(out$var1.var, ref$var, tolerance = tol)
+})
+
+test_that("buffered LOO with a nested anisotropic model matches gstat::krige", {
+  # The buffer is isotropic in the coordinates while the covariance is not.
+  meuse <- meuse_df()
+  v <- gstat::vgm(0.4, "Sph", 900, 0.1, anis = c(40, 0.4),
+    add.to = gstat::vgm(0.2, "Exp", 150, anis = c(130, 0.6)))
+  targets <- seq(2, nrow(meuse), by = 7)
+  sets <- buffer_sets_r(as.matrix(meuse[, c("x", "y")]), 250)
+  for (cs in buffer_cases()) {
+    out <- kcv(cs$f, ~ x + y, meuse, model = v, beta = cs$beta,
+      buffer = 250, targets = targets
+    )
+    ref <- krige_buffer(cs$f, meuse, v, sets, targets, cs$beta)
+    expect_equal(out$var1.pred, ref$pred, tolerance = tol)
+    expect_equal(out$var1.var, ref$var, tolerance = tol)
+  }
+})

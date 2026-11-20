@@ -30,7 +30,8 @@
 #' memory. A prepared object keeps its \eqn{n \times n} factor (\eqn{8 n^2}
 #' bytes) for as long as it exists.
 #'
-#' @param C n x n covariance matrix of the observations (positive definite).
+#' @param C n x n covariance matrix of the observations (symmetric positive
+#'   definite; an asymmetric matrix is an error).
 #' @param F n x p trend matrix (a column of ones for ordinary kriging).
 #' @param y Response: a numeric vector or an n x T matrix. Each column is
 #'   cross-validated with the same kriging weights.
@@ -72,6 +73,12 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
   if (nrow(F) != n) {
     stop("`F` must have n = nrow(C) rows.", call. = FALSE)
   }
+  check_trend(F)
+  if (!is.numeric(F) || any(!is.finite(F))) {
+    stop("`F` must be numeric, with no missing or non-finite values.",
+      call. = FALSE
+    )
+  }
   check_beta(beta, F)
   check_memory(n, matrices = 2)
   # Assigning a storage mode copies C even when it is already double, which
@@ -97,6 +104,9 @@ kcv_engine_run <- function(prepared, y, folds) {
       " rows.",
       call. = FALSE
     )
+  }
+  if (any(!is.finite(y))) {
+    stop("`y` contains missing or non-finite values.", call. = FALSE)
   }
   if (length(folds) != n || anyNA(folds)) {
     stop("`folds` must have length n = ", n, " and no missing values.",
@@ -147,13 +157,15 @@ new_prepared <- function(res, F, beta, inp, matrices) {
 
 # Buffered leave-one-out from a prepared factorization: each target point i
 # (row numbers, all rows by default) is predicted from the observations
-# farther than `radius` from it. `method` ("auto", "pairs" or "points")
+# farther than `radius` from it. `rows` is set only when `targets` is given,
+# so that build_output() subsets the input only then. `method` ("auto", "pairs" or "points")
 # selects how the blocks Q[I, I] are formed; see run_buffer_cpp().
 run_buffer_prepared <- function(p, y, radius, targets = NULL,
                                 method = c("auto", "pairs", "points")) {
   method <- match.arg(method)
   storage.mode(y) <- "double"
   n <- nrow(y)
+  rows <- targets
   if (is.null(targets)) targets <- seq_len(n)
   simple <- !is.null(p$beta)
   max_gb <- getOption("fastkcv.max_gb", 6.4)
@@ -170,7 +182,7 @@ run_buffer_prepared <- function(p, y, radius, targets = NULL,
   pred <- res$pred
   dimnames(pred) <- list(rownames(y)[targets], colnames(y))
   list(pred = pred, var = res$var, folds = targets,
-    n_heldout = res$size, rows = targets, method = res$method)
+    n_heldout = res$size, rows = rows, method = res$method)
 }
 
 # Resolves `targets` to sorted row numbers.
@@ -203,8 +215,8 @@ resolve_targets <- function(targets, n) {
 }
 
 check_buffer <- function(buffer) {
-  if (!is.numeric(buffer) || length(buffer) != 1 || is.na(buffer) ||
-    !is.finite(buffer) || buffer < 0) {
+  if (!is.numeric(buffer) || length(buffer) != 1 || !is.finite(buffer) ||
+    buffer < 0) {
     stop("`buffer` must be a single non-negative number (a radius in ",
       "coordinate units).",
       call. = FALSE
@@ -241,7 +253,12 @@ raise_status <- function(status, f, n, matrices) {
     err_every_obs(f),
     err_unidentifiable(f),
     err_singular(f),
-    err_memory(n, max(matrices, 1))
+    if (matrices == 0) {
+      err_run_memory("more, smaller folds")
+    } else {
+      err_memory(n, matrices)
+    },
+    err_not_symmetric()
   )
 }
 
@@ -263,10 +280,30 @@ check_prepared <- function(x) {
 }
 
 check_beta <- function(beta, F) {
-  if (!is.null(beta) && length(beta) != ncol(F)) {
+  if (is.null(beta)) {
+    return(invisible(TRUE))
+  }
+  if (length(beta) != ncol(F)) {
     stop(
       "`beta` has length ", length(beta), " but the trend has ", ncol(F),
       " coefficient(s).",
+      call. = FALSE
+    )
+  }
+  if (!is.numeric(beta) || any(!is.finite(beta))) {
+    stop("`beta` must be numeric, with no missing or non-finite values.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+# A trend matrix without columns (formula z ~ 0) is neither ordinary nor
+# universal kriging; gstat rejects it too.
+check_trend <- function(F) {
+  if (ncol(F) == 0) {
+    stop("The trend has no terms (e.g. formula z ~ 0); use z ~ 1 for ",
+      "ordinary kriging, or a known mean with `beta`.",
       call. = FALSE
     )
   }
@@ -490,6 +527,14 @@ check_fold_identifiable <- function(F, idx, f, simple) {
 # in memory: `matrices` n x n double matrices must fit in the budget
 # getOption("fastkcv.max_gb"). See the "Memory" section of ?kcv_engine.
 check_memory <- function(n, matrices) {
+  # Armadillo's 32-bit indices (arma::uword) cap a matrix at 2^32 - 1
+  # elements.
+  if (n > 65535) {
+    stop("n = ", n, " observations exceed the largest supported n = 65535 ",
+      "(the n x n matrix would have more than 2^32 - 1 elements).",
+      call. = FALSE
+    )
+  }
   max_gb <- getOption("fastkcv.max_gb", 6.4)
   if (matrices * 8 * as.double(n)^2 / 1e9 > max_gb) {
     err_memory(n, matrices, max_gb)
@@ -558,7 +603,22 @@ raise_buffer_status <- function(status, i, m, radius, n) {
       region = "the buffer", advice = "a smaller radius"
     ),
     err_singular(i, label, region = "point"),
-    err_memory(n, 1)
+    err_run_memory("`targets` or a smaller `buffer`")
+  )
+}
+
+err_not_symmetric <- function() {
+  stop("`C` is not symmetric (C[i, j] and C[j, i] differ by more than ",
+    "1e-8 times the largest diagonal entry).",
+    call. = FALSE
+  )
+}
+
+# Out of memory after the factorization, while forming the blocks Q[I, I].
+err_run_memory <- function(advice) {
+  stop("Out of memory while forming the blocks Q[I, I] of the ",
+    "cross-validation (after the factorization). Use ", advice, ".",
+    call. = FALSE
   )
 }
 

@@ -218,3 +218,19 @@ test_that("fold_kmeans() is quiet on large clustered data", {
   is_partition(f, nrow(xy))
   expect_identical(max(f), 100L)
 })
+
+test_that("fold_blocks() with many small cells does not overflow", {
+  meuse <- meuse_df()
+  xy <- as.matrix(meuse[, c("x", "y")])
+  # 557,000 x 779,400 cells: the cell numbers exceed the integer range.
+  f <- fold_blocks(xy, size = 0.005)
+  expect_false(anyNA(f))
+  ix <- floor((xy[, 1] - min(xy[, 1])) / 0.005) + 1
+  iy <- floor((xy[, 2] - min(xy[, 2])) / 0.005) + 1
+  nx <- ceiling(diff(range(xy[, 1])) / 0.005)
+  ix <- pmin(ix, nx)
+  iy <- pmin(iy, ceiling(diff(range(xy[, 2])) / 0.005))
+  cell <- (iy - 1) * nx + ix
+  expect_identical(f, match(cell, sort(unique(cell))))
+  expect_error(fold_blocks(xy, size = 1e-300), "too many cells")
+})

@@ -24,11 +24,14 @@
 //   1 C not positive definite        4 fold leaves the trend unidentifiable
 //   2 trend matrix rank deficient    5 Q[I, I] numerically singular
 //   3 fold contains every observation 6 out of memory
+//   7 C not symmetric
 
 #include <RcppArmadillo.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
+#include <cstddef>
 #include <vector>
 
 #include "covariance.h"
@@ -163,14 +166,15 @@ bool solve_unit(const arma::mat& Qii, arma::uword pos, arma::vec& x) {
 }
 
 // In-place transpose of an n x n column-major matrix, in cache blocks.
-void transpose_inplace(double* a, arma::uword n) {
-  const arma::uword bs = 64;
-  for (arma::uword jb = 0; jb < n; jb += bs) {
-    for (arma::uword ib = 0; ib <= jb; ib += bs) {
-      const arma::uword jmax = std::min(jb + bs, n);
-      for (arma::uword j = jb; j < jmax; ++j) {
-        const arma::uword imax = std::min(ib + bs, j);
-        for (arma::uword i = ib; i < imax; ++i) {
+// std::size_t, not arma::uword (32 bits here), so that i + j n cannot wrap.
+void transpose_inplace(double* a, std::size_t n) {
+  const std::size_t bs = 64;
+  for (std::size_t jb = 0; jb < n; jb += bs) {
+    for (std::size_t ib = 0; ib <= jb; ib += bs) {
+      const std::size_t jmax = std::min(jb + bs, n);
+      for (std::size_t j = jb; j < jmax; ++j) {
+        const std::size_t imax = std::min(ib + bs, j);
+        for (std::size_t i = ib; i < imax; ++i) {
           std::swap(a[i + j * n], a[j + i * n]);
         }
       }
@@ -220,18 +224,48 @@ Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
 
 // Points within `radius` of point i (Euclidean), from candidates sorted by
 // x: `ord` holds point indices and `xs` their x coordinates. Appends to
-// `out` in arbitrary order.
+// `out` in arbitrary order. The x window is widened by a few ulps: x[i] +
+// radius is rounded independently of the distance test, and without the
+// slack a point at distance about `radius` could be dropped here although
+// the test accepts it (and accepts i from that point's side).
 void neighbors(const arma::vec& x, const arma::vec& y, const arma::uvec& ord,
                 const arma::vec& xs, arma::uword i, double radius,
                 std::vector<arma::uword>& out) {
-  const double* lo = std::lower_bound(xs.begin(), xs.end(), x[i] - radius);
-  const double* hi = std::upper_bound(xs.begin(), xs.end(), x[i] + radius);
+  const double w = radius + 4.0 * DBL_EPSILON * (std::fabs(x[i]) + radius);
+  const double* lo = std::lower_bound(xs.begin(), xs.end(), x[i] - w);
+  const double* hi = std::upper_bound(xs.begin(), xs.end(), x[i] + w);
   for (arma::uword k = lo - xs.begin(); k < arma::uword(hi - xs.begin());
        ++k) {
     const arma::uword j = ord[k];
     const double dx = x[j] - x[i], dy = y[j] - y[i];
     if (j == i || std::sqrt(dx * dx + dy * dy) <= radius) out.push_back(j);
   }
+}
+
+// Is the n x n column-major matrix `a` symmetric, up to 1e-8 times its
+// largest diagonal entry? dpotrf reads only the upper triangle, so an
+// asymmetric matrix would otherwise be used silently. Visits the pairs in
+// cache blocks, as transpose_inplace() does, without allocating.
+bool is_symmetric(const double* a, std::size_t n) {
+  double dmax = 0.0;
+  for (std::size_t j = 0; j < n; ++j) {
+    dmax = std::max(dmax, std::fabs(a[j + j * n]));
+  }
+  const double tol = 1e-8 * dmax;
+  const std::size_t bs = 64;
+  for (std::size_t jb = 0; jb < n; jb += bs) {
+    for (std::size_t ib = 0; ib <= jb; ib += bs) {
+      const std::size_t jmax = std::min(jb + bs, n);
+      for (std::size_t j = jb; j < jmax; ++j) {
+        const std::size_t imax = std::min(ib + bs, j);
+        for (std::size_t i = ib; i < imax; ++i) {
+          // Written so that a NaN on either side also fails.
+          if (!(std::fabs(a[i + j * n] - a[j + i * n]) <= tol)) return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -266,6 +300,7 @@ Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C,
     // One explicit copy: `W = Rcpp::clone(C)` duplicated the matrix twice
     // (measured with tracemem), so the peak was three n x n matrices.
     const int n = C.nrow();
+    if (!is_symmetric(C.begin(), n)) return fail(7, 0);
     Rcpp::NumericMatrix W(Rcpp::no_init(n, n));
     std::copy(C.begin(), C.end(), W.begin());
     return factor_inplace(W, F, simple);
@@ -301,11 +336,11 @@ Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
     }
 
     if (loo) {
+      if (n == 1) return fail(3, 1);
       arma::vec lev;
       if (!simple) lev = arma::sum(arma::square(U), 1);
       for (int f = 0; f < nf; ++f) {
-        int i = Rcpp::as<Rcpp::IntegerVector>(fold_idx[f])[0];
-        if (n == 1) return fail(3, f + 1);
+        const int i = Rcpp::as<Rcpp::IntegerVector>(fold_idx[f])[0];
         if (!simple && 1.0 - lev[i] < ident_tol) return fail(4, f + 1);
         if (!(qdiag[i] > 0.0) || !std::isfinite(qdiag[i])) {
           return fail(5, f + 1);
@@ -451,36 +486,47 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
         // computed on the fly below.
         const double r2 = 2.0 * radius * (1.0 + 1e-12);
         const double max_pairs = max_cache_bytes / 12.0;
+        // Pass 1 counts the pairs and their cost, so that the cache is
+        // allocated once at its exact size (growing it by push_back could
+        // briefly need twice the memory that the budget allows for).
         double cost_pairs = 0.0;
+        std::size_t n_pairs = 0;
         bool fits = true;
         for (arma::uword k = 0; k < nu && fits; ++k) {
           const arma::uword j = uord[k];
           buf.clear();
           neighbors(x, y, uord, uxs, j, r2, buf);
-          std::sort(buf.begin(), buf.end());
-          pstart[j] = pidx.size();
+          pstart[j] = n_pairs;
           for (arma::uword kk : buf) {
             if (kk >= j) {
-              pidx.push_back(kk);
+              ++n_pairs;
               cost_pairs += double(n - kk);
             }
           }
-          pend[j] = pidx.size();
-          if (method == 0 && double(pidx.size()) > max_pairs) fits = false;
+          pend[j] = n_pairs;
+          if (method == 0 && double(n_pairs) > max_pairs) fits = false;
           if (k % 256 == 0) Rcpp::checkUserInterrupt();
         }
         use_pairs = method == 1 || (fits && cost_pairs < cost_points);
         if (use_pairs) {
-          pval.resize(pidx.size());
+          // Pass 2 stores the sorted partners and the entries Q[j, k].
+          pidx.resize(n_pairs);
+          pval.resize(n_pairs);
           for (arma::uword k = 0; k < nu; ++k) {
             const arma::uword j = uord[k];
-            for (std::size_t a = pstart[j]; a < pend[j]; ++a) {
-              pval[a] = q_entry(Wt, G, j, pidx[a], simple);
+            buf.clear();
+            neighbors(x, y, uord, uxs, j, r2, buf);
+            std::sort(buf.begin(), buf.end());
+            std::size_t a = pstart[j];
+            for (arma::uword kk : buf) {
+              if (kk >= j) {
+                pidx[a] = kk;
+                pval[a] = q_entry(Wt, G, j, kk, simple);
+                ++a;
+              }
             }
             if (k % 64 == 0) Rcpp::checkUserInterrupt();
           }
-        } else {
-          std::vector<arma::uword>().swap(pidx);
         }
       }
     }

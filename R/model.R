@@ -44,6 +44,13 @@ validate_model <- function(model) {
       call. = FALSE
     )
   }
+  pars <- c("psill", "range", "kappa", "ang1", "anis1")
+  if (!all(vapply(model[pars], function(v) all(is.finite(v)), logical(1)))) {
+    stop("`model` has missing or non-finite parameters (",
+      paste(pars, collapse = ", "), ").",
+      call. = FALSE
+    )
+  }
   if (any(model$psill < 0)) {
     stop("`model` has a negative partial sill.", call. = FALSE)
   }
@@ -52,6 +59,11 @@ validate_model <- function(model) {
   }
   if (any(model$range[types != "Nug"] <= 0)) {
     stop("Every non-nugget component of `model` needs a positive range.",
+      call. = FALSE
+    )
+  }
+  if (any(model$kappa[types %in% c("Mat", "Ste")] <= 0)) {
+    stop("Every Mat or Ste component of `model` needs a positive kappa.",
       call. = FALSE
     )
   }
@@ -91,16 +103,22 @@ covariance_matrix <- function(model, coords1, coords2 = NULL) {
   }
   storage.mode(coords1) <- "double"
   storage.mode(coords2) <- "double"
-  types <- as.character(model$model)
-  cov_matrix_cpp(
-    coords1, coords2,
-    type = match(types, supported_models) - 1L,
+  do.call(cov_matrix_cpp, c(
+    list(coords1, coords2), model_cpp_args(model),
+    list(symmetric = symmetric)
+  ))
+}
+
+# The columns of a validated variogram model as passed to the C++ kernels
+# (type code = position in `supported_models` minus 1).
+model_cpp_args <- function(model) {
+  list(
+    type = match(as.character(model$model), supported_models) - 1L,
     psill = as.double(model$psill),
     range = as.double(model$range),
     kappa = as.double(model$kappa),
     ang1 = as.double(model$ang1),
-    anis1 = as.double(model$anis1),
-    symmetric = symmetric
+    anis1 = as.double(model$anis1)
   )
 }
 

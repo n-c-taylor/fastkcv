@@ -180,3 +180,86 @@ test_that("inputs above the memory budget are rejected before allocation", {
   expect_error(err_memory(1e5, 2), "about 160 GB.*could not be allocated")
   expect_error(err_memory(28285, 1), "about 6.5 GB")
 })
+
+test_that("non-finite model parameters and non-positive kappa are rejected", {
+  meuse <- meuse_df()
+  # kappa <= 0 used to give a silent pure-nugget model (lgamma(0) = Inf
+  # zeroes every correlation); krige.cv returns NA there.
+  for (k in c(0, -1)) {
+    expect_error(
+      kcv(log(zinc) ~ 1, ~ x + y, meuse,
+        model = gstat::vgm(0.6, "Mat", 300, 0.05, kappa = k)
+      ),
+      "Mat or Ste component of `model` needs a positive kappa"
+    )
+  }
+  ste <- gstat::vgm(0.6, "Ste", 300, kappa = 1)
+  ste$kappa <- 0
+  expect_error(validate_model(ste), "positive kappa")
+  for (col in c("psill", "range", "anis1", "ang1")) {
+    bad <- m_ok
+    bad[[col]][2] <- if (col == "range") Inf else NA
+    expect_error(validate_model(bad), "missing or non-finite parameters")
+  }
+})
+
+test_that("a trend without terms is rejected", {
+  meuse <- meuse_df()
+  for (f in list(log(zinc) ~ 0, log(zinc) ~ -1)) {
+    expect_error(kcv(f, ~ x + y, meuse, model = m_ok), "trend has no terms")
+  }
+  expect_error(kcv_engine_prepare(diag(3), matrix(0, 3, 0)),
+    "trend has no terms")
+})
+
+test_that("the engine rejects missing values in y, F and beta", {
+  set.seed(1)
+  xy <- matrix(runif(40), ncol = 2)
+  C <- exp(-as.matrix(dist(xy)) / 0.3)
+  F <- cbind(1, rnorm(20))
+  y <- rnorm(20)
+  y_na <- replace(y, 3, NA)
+  # One NA used to turn every prediction into NA.
+  expect_error(kcv_engine(C, F, y_na, rep(1:4, 5)), "`y` contains missing")
+  p <- kcv_engine_prepare(C, F)
+  expect_error(kcv_engine_run(p, replace(y, 2, Inf), 1:20), "non-finite")
+  F_na <- F
+  F_na[2, 2] <- NA
+  expect_error(kcv_engine_prepare(C, F_na), "`F` must be numeric")
+  expect_error(kcv_engine_prepare(C, F, beta = c(1, NA)), "`beta` must be")
+  expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse_df(), model = m_ok,
+    beta = "a"), "`beta` must be numeric")
+})
+
+test_that("an asymmetric covariance matrix is rejected", {
+  set.seed(2)
+  xy <- matrix(runif(40), ncol = 2)
+  C <- exp(-as.matrix(dist(xy)) / 0.3)
+  Ca <- C
+  Ca[2, 1] <- 5
+  expect_error(kcv_engine(Ca, matrix(1, 20, 1), rnorm(20), 1:20),
+    "`C` is not symmetric")
+  expect_error(kcv_engine_prepare(Ca, matrix(1, 20, 1)), "not symmetric")
+  Cn <- C
+  Cn[20, 3] <- NaN
+  expect_error(kcv_engine_prepare(Cn, matrix(1, 20, 1)), "not symmetric")
+  # Rounding-level asymmetry (far below 1e-8 times the diagonal) is fine.
+  Cr <- C
+  Cr[2, 1] <- C[2, 1] + 1e-12
+  expect_no_error(kcv_engine_prepare(Cr, matrix(1, 20, 1)))
+})
+
+test_that("n above the 32-bit matrix limit is rejected with a clear error", {
+  withr::local_options(fastkcv.max_gb = 1e6)
+  expect_error(check_memory(65536, 1), "largest supported n = 65535")
+  expect_no_error(check_memory(65535, 1))
+})
+
+test_that("running out of memory after the factorization is reported", {
+  expect_error(raise_status(6, NA, 100, 0),
+    "Out of memory while forming the blocks.*smaller folds")
+  expect_error(raise_buffer_status(6, 0, NULL, 50, 100),
+    "Out of memory while forming the blocks.*`targets` or a smaller")
+  # The prepare stage keeps the n x n message.
+  expect_error(raise_status(6, NA, 100, 1), "n = 100 .*could not be allocated")
+})

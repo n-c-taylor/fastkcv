@@ -97,6 +97,8 @@ test_that("kcv_metrics() rejects invalid input", {
   expect_error(kcv_metrics(x, level = 1), "`level`")
   expect_error(kcv_metrics(x, level = c(0.5, NA)), "`level`")
   expect_error(kcv_metrics(x, level = numeric(0)), "`level`")
+  # Duplicate levels used to collapse into one column.
+  expect_error(kcv_metrics(x, level = c(0.9, 0.9)), "distinct")
   expect_error(kcv_metrics(x, by_fold = NA), "`by_fold`")
   bad <- x
   bad$residual <- as.character(bad$residual)

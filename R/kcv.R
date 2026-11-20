@@ -135,18 +135,10 @@
 kcv <- function(formula, locations, data, model, nfold, folds = NULL,
                 beta = NULL, buffer = NULL, targets = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
-  n <- nrow(inp$inp$y)
-  if (!is.null(buffer) || !is.null(targets)) {
-    targets <- check_buffer_args(buffer, missing(nfold), folds, targets, n)
-    p <- kcv_factor(inp$inp, inp$model, beta)
-    return(build_output(
-      inp$inp,
-      run_buffer_prepared(p, inp$inp$y, buffer, targets)
-    ))
-  }
-  fold <- resolve_folds(nfold, folds, n)
-  p <- kcv_factor(inp$inp, inp$model, beta)
-  build_output(inp$inp, run_prepared(p, inp$inp$y, fold))
+  # `p` is a promise: the factorization runs only after the fold and buffer
+  # arguments have been checked.
+  run_scheme(kcv_factor(inp$inp, inp$model, beta), inp$inp, nfold, folds,
+    buffer, targets)
 }
 
 #' Factorize once, cross-validate many times
@@ -197,16 +189,20 @@ kcv_run <- function(prepared, nfold, folds = NULL, buffer = NULL,
       call. = FALSE
     )
   }
-  n <- nrow(prepared$inp$y)
+  run_scheme(prepared, prepared$inp, nfold, folds, buffer, targets)
+}
+
+# One fold scheme (or buffered leave-one-out) from a prepared factorization
+# `p`, which is first used after the arguments are checked. `nfold` may be
+# missing, as in kcv().
+run_scheme <- function(p, inp, nfold, folds, buffer, targets) {
+  n <- nrow(inp$y)
   if (!is.null(buffer) || !is.null(targets)) {
     targets <- check_buffer_args(buffer, missing(nfold), folds, targets, n)
-    return(build_output(
-      prepared$inp,
-      run_buffer_prepared(prepared, prepared$inp$y, buffer, targets)
-    ))
+    return(build_output(inp, run_buffer_prepared(p, inp$y, buffer, targets)))
   }
   fold <- resolve_folds(nfold, folds, n)
-  build_output(prepared$inp, run_prepared(prepared, prepared$inp$y, fold))
+  build_output(inp, run_prepared(p, inp$y, fold))
 }
 
 # Checks the buffered leave-one-out arguments; returns the target rows.
@@ -258,17 +254,10 @@ kcv_factor <- function(inp, model, beta) {
   check_memory(n, matrices = 1)
   F <- inp$F
   storage.mode(F) <- "double"
-  res <- prepare_model_cpp(
-    inp$coords,
-    type = match(as.character(model$model), supported_models) - 1L,
-    psill = as.double(model$psill),
-    range = as.double(model$range),
-    kappa = as.double(model$kappa),
-    ang1 = as.double(model$ang1),
-    anis1 = as.double(model$anis1),
-    F = F,
-    simple = !is.null(beta)
-  )
+  res <- do.call(prepare_model_cpp, c(
+    list(inp$coords), model_cpp_args(model),
+    list(F = F, simple = !is.null(beta))
+  ))
   new_prepared(res, F, beta, inp = inp, matrices = 1)
 }
 
