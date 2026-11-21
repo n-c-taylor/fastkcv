@@ -73,6 +73,39 @@ variograms, geographic coordinates and re-fitting the variogram in each
 fold are not supported, and give an error. Memory is one n x n matrix
 (8 n^2 bytes, 3.2 GB at n = 20,000), checked before anything is allocated.
 
+## Related packages
+
+fastkcv is a companion to gstat, not a fork or a replacement: `kcv()` takes
+the inputs of `krige.cv()` and returns its output, and fitting variograms
+and kriging new locations stay with gstat. It is a separate package for
+three reasons. The single factorization works only for global kriging,
+while gstat's engine sets up a kriging system for each prediction location,
+which is what makes local neighborhoods (`nmax`, `maxdist`) possible. It
+needs compiled C++ code (Rcpp, RcppArmadillo) and a dense n x n matrix
+(8 n^2 bytes, checked up front). And most of the package is a
+cross-validation toolkit rather than a faster `krige.cv()`: buffered
+leave-one-out, spatial fold builders, `kcv_metrics()`, `kcv_prepare()` /
+`kcv_run()` to reuse one factorization, and `kcv_engine()` for any
+covariance matrix.
+
+`leaveOneOut.km()` in DiceKriging uses the same closed-form leave-one-out
+algebra, without a nugget term, with tensor-product kernels on a design
+matrix rather than gstat variogram models on spatial data, and without
+k-fold or buffered designs. From the same covariance matrix, fastkcv is
+1.6 to 4.1 times faster end to end (OpenBLAS) and about level on the
+leave-one-out step alone. blockCV and spatialsample build spatial folds
+for any model but do not fit one; a partition from them, such as
+`folds_ids` from blockCV's `cv_spatial()`, can be passed to
+`kcv_run(folds = )`.
+
+|                                | LOO              | k-fold | Buffered LOO | Block / cluster folds | Nugget, gstat models | Input                  | Exact, no refit per fold |
+|:-------------------------------|:-----------------|:-------|:-------------|:----------------------|:---------------------|:-----------------------|:-------------------------|
+| fastkcv                        | yes              | yes    | yes          | yes                   | yes                  | data.frame, `sf`, `sp` | yes                      |
+| gstat `krige.cv()`             | yes              | yes    | no           | any fold vector       | yes                  | data.frame, `sf`, `sp` | no (refits)              |
+| DiceKriging `leaveOneOut.km()` | yes              | no     | no           | no                    | no                   | design matrix          | yes                      |
+| blockCV                        | NNDM variant     | yes    | yes          | yes                   | (folds only)         | `sf`, `sp` points      | (folds only)             |
+| spatialsample                  | yes (`v = Inf`)  | yes    | yes          | yes                   | (folds only)         | `sf`                   | (folds only)             |
+
 ## Use of AI tools
 
 This package was developed with the help of an AI coding assistant

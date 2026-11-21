@@ -1,6 +1,8 @@
 anisotropic
 anisotropy
 Anthropic's
+blockCV
+blockCV's
 CMD
 cv
 DiceKriging
@@ -17,7 +19,12 @@ krige
 MKL
 multithreaded
 Multithreaded
+NNDM
 OpenBLAS
+Rcpp
+RcppArmadillo
 Schärer
+spatialsample
+spatialsample's
 TRANSfer
 unsampled

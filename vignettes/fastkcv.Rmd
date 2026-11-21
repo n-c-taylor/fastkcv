@@ -206,11 +206,10 @@ fastkcv's time, then `krige.cv()`'s time and the speed-up.
 The speed-up is largest for leave-one-out and shrinks as the folds become
 fewer and larger. A refit of k folds costs about k factorizations of size
 n (k - 1) / k, while fastkcv's single factorization dominates its own time.
-`leaveOneOut.km()` in DiceKriging uses the same closed-form leave-one-out
-formulas (without a nugget); from the same covariance matrix,
-`kcv_engine()` is 1.6 to 4 times faster end to end, including the
-factorization. With the reference BLAS every method is slower, and
-fastkcv's gain over `krige.cv()` is still about 600x for leave-one-out at
+DiceKriging, which uses the same closed-form leave-one-out formulas, is
+compared in the section "Related packages". With the reference BLAS every
+method is slower, and fastkcv's
+gain over `krige.cv()` is still about 600x for leave-one-out at
 n = 1,000 and 2.5x to 6x for 5 to 10 folds at n = 1,000 to 5,000. At
 n = 20,000, `kcv()` takes about 110 seconds.
 
@@ -228,3 +227,54 @@ n = 20,000. `kcv_engine()`
 copies the user's matrix and needs two. The requirement is checked before
 anything is allocated, against `getOption("fastkcv.max_gb", 6.4)` GB; raise
 the option on machines with more memory.
+
+## Related packages
+
+fastkcv is a companion to gstat, not a fork or a replacement. `kcv()` takes
+the inputs of `krige.cv()` and returns its output, and fitting the
+variogram and kriging new locations stay with gstat. It is a separate
+package for three reasons:
+
+* The single factorization works only for global kriging, where every
+  fold shares one covariance matrix of the observations. gstat's engine
+  sets up a kriging system for each prediction location, which is what
+  makes local neighborhoods (`nmax`, `nmin`, `maxdist`) possible; with
+  local neighborhoods every point has its own system and there is nothing
+  to factorize once.
+* It needs compiled C++ code (Rcpp, RcppArmadillo) and a dense n x n
+  matrix (8 n^2 bytes), which is checked before anything is allocated.
+* Most of the package is a cross-validation toolkit rather than a faster
+  `krige.cv()`: buffered leave-one-out, spatial fold builders,
+  `kcv_metrics()`, `kcv_prepare()` / `kcv_run()` to reuse one
+  factorization across fold designs, and `kcv_engine()` for any covariance
+  matrix.
+
+`leaveOneOut.km()` in DiceKriging uses the same closed-form leave-one-out
+algebra. It has no nugget term, works with tensor-product kernels on a
+design matrix rather than gstat variogram models on spatial data, and
+offers neither k-fold nor buffered designs. Without a nugget, and from the
+same covariance matrix, the two agree to about 1e-15 for simple kriging
+and for ordinary kriging with the trend re-estimated in each fold. End to
+end (model setup plus leave-one-out), fastkcv is 1.6 to 4.1 times faster
+with OpenBLAS and 1.4 to 2.1 times with the reference BLAS. On the
+leave-one-out step alone the two are about level (0.9 to 1.8 times with
+OpenBLAS, 0.75 to 0.9 times with the reference BLAS).
+
+blockCV and spatialsample build spatial folds (blocks, clusters, buffers,
+nearest-neighbor distance matching) for any model, but do not fit or
+predict with one. A partition from them, such as `folds_ids` from
+blockCV's `cv_spatial()`, can be passed to `kcv_run(folds = )`.
+
+|                                | LOO              | k-fold | Buffered LOO | Block / cluster folds | Nugget, gstat models | Input                  | Exact, no refit per fold |
+|:-------------------------------|:-----------------|:-------|:-------------|:----------------------|:---------------------|:-----------------------|:-------------------------|
+| fastkcv                        | yes              | yes    | yes          | yes                   | yes                  | data.frame, `sf`, `sp` | yes                      |
+| gstat `krige.cv()`             | yes              | yes    | no           | any fold vector       | yes                  | data.frame, `sf`, `sp` | no (refits)              |
+| DiceKriging `leaveOneOut.km()` | yes              | no     | no           | no                    | no                   | design matrix          | yes                      |
+| blockCV                        | NNDM variant     | yes    | yes          | yes                   | (folds only)         | `sf`, `sp` points      | (folds only)             |
+| spatialsample                  | yes (`v = Inf`)  | yes    | yes          | yes                   | (folds only)         | `sf`                   | (folds only)             |
+
+"(folds only)": the package returns fold assignments and fits no model.
+NNDM is nearest-neighbor distance matching (`cv_nndm()`), a variant of
+leave-one-out; blockCV's buffered leave-one-out is `cv_buffer()`.
+spatialsample's buffered leave-one-out is `spatial_buffer_vfold_cv()` with
+`v = Inf` and a `buffer`.
