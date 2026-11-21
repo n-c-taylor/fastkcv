@@ -24,7 +24,9 @@ test_that("buffered LOO matches gstat::krige on the remaining data (meuse)", {
       )
       ref <- krige_buffer(cs$f, meuse, m_buf, sets, targets, cs$beta)
       expect_equal(out$var1.pred[targets], ref$pred, tolerance = tol)
+      expect_close(out$var1.pred[targets], ref$pred)
       expect_equal(out$var1.var[targets], ref$var, tolerance = tol)
+      expect_close(out$var1.var[targets], ref$var)
       expect_identical(out$n_heldout, lengths(sets))
     }
   }
@@ -49,7 +51,9 @@ test_that("buffered LOO matches gstat::krige on a simulated field", {
       out <- kcv(cs$f, ~ x + y, d, model = v, beta = cs$beta, buffer = radius)
       ref <- krige_buffer(cs$f, d, v, sets, targets, cs$beta)
       expect_equal(out$var1.pred[targets], ref$pred, tolerance = tol)
+      expect_close(out$var1.pred[targets], ref$pred)
       expect_equal(out$var1.var[targets], ref$var, tolerance = tol)
+      expect_close(out$var1.var[targets], ref$var)
     }
   }
 })
@@ -94,7 +98,9 @@ test_that("the C++ buffer engine matches both R oracles", {
       r2 <- kcv_buffer_reference(C, F, Y, sets, beta)
       for (r in list(r1, r2)) {
         expect_equal(unname(res$pred), unname(r$pred), tolerance = tol)
+        expect_close(unname(res$pred), unname(r$pred))
         expect_equal(res$var, r$var, tolerance = tol)
+        expect_close(res$var, r$var)
       }
       expect_identical(res$n_heldout, lengths(sets))
       expect_identical(res$folds, seq_len(n))
@@ -223,6 +229,7 @@ test_that("a numerically singular Q[I, I] names the point", {
   expect_null(buffer_solve_cpp(matrix(c(1, 1, 1, 1), 2), 0L))
   Qii <- matrix(c(2, 1, 1, 2), 2)
   expect_equal(drop(buffer_solve_cpp(Qii, 1L)), solve(Qii)[, 2], tolerance = tol)
+  expect_close(drop(buffer_solve_cpp(Qii, 1L)), solve(Qii)[, 2])
   expect_error(
     raise_buffer_status(5, 4, 2, 100, 10),
     paste0(
@@ -254,7 +261,9 @@ test_that("the pair-cache and per-point strategies agree with the oracles", {
         ref <- kcv_buffer_reference(C, FF, Y, sets, beta)
         for (r in list(pr, po)) {
           expect_equal(unname(r$pred), unname(ref$pred), tolerance = tol)
+          expect_close(unname(r$pred), unname(ref$pred))
           expect_equal(r$var, ref$var, tolerance = tol)
+          expect_close(r$var, ref$var)
           expect_identical(r$n_heldout, lengths(sets))
         }
       }
@@ -275,7 +284,9 @@ test_that("auto uses the pair cache only when it fits the memory budget", {
   forced <- run_buffer_prepared(p, y, 400, method = "pairs")
   expect_identical(forced$method, "pairs")
   expect_equal(forced$pred, auto$pred, tolerance = tol)
+  expect_close(forced$pred, auto$pred)
   expect_equal(forced$var, auto$var, tolerance = tol)
+  expect_close(forced$var, auto$var)
 })
 
 test_that("targets returns the target rows of the full run", {
@@ -365,7 +376,9 @@ test_that("a point at distance about r is held out from both sides", {
   expect_identical(out$n_heldout[1:2], c(2L, 2L))
   ref <- krige_buffer(z ~ 1, d, v, sets, 1:6)
   expect_equal(out$var1.pred, ref$pred, tolerance = tol)
+  expect_close(out$var1.pred, ref$pred)
   expect_equal(out$var1.var, ref$var, tolerance = tol)
+  expect_close(out$var1.var, ref$var)
 })
 
 test_that("buffered LOO with a nested anisotropic model matches gstat::krige", {
@@ -381,6 +394,8 @@ test_that("buffered LOO with a nested anisotropic model matches gstat::krige", {
     )
     ref <- krige_buffer(cs$f, meuse, v, sets, targets, cs$beta)
     expect_equal(out$var1.pred, ref$pred, tolerance = tol)
+    expect_close(out$var1.pred, ref$pred)
     expect_equal(out$var1.var, ref$var, tolerance = tol)
+    expect_close(out$var1.var, ref$var)
   }
 })

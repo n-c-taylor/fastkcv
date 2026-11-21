@@ -17,6 +17,8 @@ numerical precision.
   sums of them and 2D geometric anisotropy. data.frame, `sf` and `sp` data.
 * Random, spatial block and k-means fold builders, and `kcv_metrics()` to
   compare fold designs (RMSE, bias, z-scores, interval coverage).
+* Several responses at the same locations (`cbind(z1, z2) ~ 1`, or
+  `kcv_run(prepared, y = )`) cross-validated from one factorization.
 * `kcv_prepare()` / `kcv_run()` to factorize once and run many fold schemes;
   `kcv_engine()` for a precomputed covariance matrix.
 

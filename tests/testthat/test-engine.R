@@ -29,9 +29,13 @@ expect_engines_agree <- function(C, F, y, folds, beta = NULL) {
   b <- kcv_engine_r(C, F, y, folds, beta = beta)
   r <- kcv_reference(C, F, y, folds, beta = beta)
   expect_equal(a$pred, b$pred, tolerance = tol)
+  expect_close(a$pred, b$pred)
   expect_equal(a$var, b$var, tolerance = tol)
+  expect_close(a$var, b$var)
   expect_equal(a$pred, r$pred, tolerance = tol, ignore_attr = TRUE)
+  expect_close(a$pred, r$pred)
   expect_equal(a$var, r$var, tolerance = tol)
+  expect_close(a$var, r$var)
   expect_identical(a$folds, folds)
 }
 
@@ -54,6 +58,7 @@ test_that("matrix-valued y equals column-by-column runs", {
     for (j in seq_len(ncol(Y))) {
       one <- kcv_engine(s$C, s$F_uk, Y[, j], folds)
       expect_equal(all$pred[, j], drop(one$pred), tolerance = tol)
+      expect_close(all$pred[, j], drop(one$pred))
       expect_equal(all$var, one$var)
     }
     expect_engines_agree(s$C, s$F_uk, Y, folds)
@@ -71,10 +76,13 @@ test_that("LOO fast path equals the general fold loop", {
   gen <- kcv_engine(s$C, s$F_uk, s$y, folds)
   keep <- -(1:2)
   expect_equal(gen$pred[keep, ], loo$pred[keep, ], tolerance = tol)
+  expect_close(gen$pred[keep, ], loo$pred[keep, ])
   expect_equal(gen$var[keep], loo$var[keep], tolerance = tol)
+  expect_close(gen$var[keep], loo$var[keep])
   # Permuted labels give the same LOO result.
   perm <- withr::with_seed(3, sample(s$n))
   expect_equal(kcv_engine(s$C, s$F_uk, s$y, perm)$pred, loo$pred, tolerance = tol)
+  expect_close(kcv_engine(s$C, s$F_uk, s$y, perm)$pred, loo$pred)
 })
 
 test_that("kcv_engine keeps the dimnames of a matrix y", {

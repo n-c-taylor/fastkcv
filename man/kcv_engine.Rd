@@ -14,7 +14,7 @@ kcv_engine_run(prepared, y, folds, beta = NULL)
 }
 \arguments{
 \item{C}{n x n covariance matrix of the observations (symmetric positive
-definite; an asymmetric matrix is an error).}
+definite; an asymmetric matrix or a non-finite entry is an error).}
 
 \item{F}{n x p trend matrix (a column of ones for ordinary kriging).}
 
@@ -41,9 +41,9 @@ of times with different \code{y} or \code{folds}.
 }
 \description{
 Low-level engine behind \code{\link[=kcv]{kcv()}}, implemented in C++. Given the covariance
-matrix \code{C} of the observations, the trend matrix \code{F} and fold assignments, it computes
-cross-validation predictions and variances for every fold from a single
-factorization of \code{C}:
+matrix \code{C} of the observations, the trend matrix \code{F} and fold
+assignments, it computes cross-validation predictions and variances for
+every fold from a single factorization of \code{C}:
 }
 \details{
 \itemize{

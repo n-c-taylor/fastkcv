@@ -24,7 +24,7 @@
 //   1 C not positive definite        4 fold leaves the trend unidentifiable
 //   2 trend matrix rank deficient    5 Q[I, I] numerically singular
 //   3 fold contains every observation 6 out of memory
-//   7 C not symmetric
+//   7 C not symmetric                 8 C has a non-finite entry
 
 #include <RcppArmadillo.h>
 
@@ -250,16 +250,22 @@ void neighbors(const arma::vec& x, const arma::vec& y, const arma::uvec& ord,
   }
 }
 
-// Is the n x n column-major matrix `a` symmetric, up to 1e-8 times its
-// largest diagonal entry? dpotrf reads only the upper triangle, so an
-// asymmetric matrix would otherwise be used silently. Visits the pairs in
-// cache blocks, as transpose_inplace() does, without allocating.
-bool is_symmetric(const double* a, std::size_t n) {
+// Checks the n x n column-major matrix `a`: 0 if every entry is finite and
+// it is symmetric up to 1e-8 times its largest diagonal entry, else the
+// failure status (8 a non-finite entry, 7 asymmetric). dpotrf reads only
+// the upper triangle, so an asymmetric matrix would otherwise be used
+// silently, and some LAPACK builds (OpenBLAS) do not flag a NaN on the
+// diagonal. Visits the pairs in cache blocks, as transpose_inplace() does,
+// without allocating.
+int check_matrix(const double* a, std::size_t n) {
   double dmax = 0.0;
   for (std::size_t j = 0; j < n; ++j) {
-    dmax = std::max(dmax, std::fabs(a[j + j * n]));
+    const double d = a[j + j * n];
+    if (!std::isfinite(d)) return 8;
+    dmax = std::max(dmax, std::fabs(d));
   }
   const double tol = 1e-8 * dmax;
+  bool symmetric = true;
   const std::size_t bs = 64;
   for (std::size_t jb = 0; jb < n; jb += bs) {
     for (std::size_t ib = 0; ib <= jb; ib += bs) {
@@ -267,13 +273,14 @@ bool is_symmetric(const double* a, std::size_t n) {
       for (std::size_t j = jb; j < jmax; ++j) {
         const std::size_t imax = std::min(ib + bs, j);
         for (std::size_t i = ib; i < imax; ++i) {
-          // Written so that a NaN on either side also fails.
-          if (!(std::fabs(a[i + j * n] - a[j + i * n]) <= tol)) return false;
+          const double u = a[i + j * n], l = a[j + i * n];
+          if (!std::isfinite(u) || !std::isfinite(l)) return 8;
+          if (!(std::fabs(u - l) <= tol)) symmetric = false;
         }
       }
     }
   }
-  return true;
+  return symmetric ? 0 : 7;
 }
 
 }  // namespace
@@ -308,7 +315,8 @@ Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C,
     // One explicit copy: `W = Rcpp::clone(C)` duplicated the matrix twice
     // (measured with tracemem), so the peak was three n x n matrices.
     const int n = C.nrow();
-    if (!is_symmetric(C.begin(), n)) return fail(7, 0);
+    const int status = check_matrix(C.begin(), n);
+    if (status != 0) return fail(status, 0);
     Rcpp::NumericMatrix W(Rcpp::no_init(n, n));
     std::copy(C.begin(), C.end(), W.begin());
     return factor_inplace(W, F, simple);

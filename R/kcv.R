@@ -222,7 +222,7 @@ kcv <- function(formula, locations, data, model, nfold, folds = NULL,
 #' perm <- replicate(20, sample(log(meuse$zinc)))
 #' cv_perm <- kcv_run(p, nfold = 10, y = perm)
 #' summary(kcv_metrics(cv_perm)$rmse)
-kcv_prepare <-function(formula, locations, data, model, beta = NULL, ...) {
+kcv_prepare <- function(formula, locations, data, model, beta = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
   kcv_factor(inp$inp, inp$model, beta)
 }
@@ -273,7 +273,9 @@ new_responses <- function(inp, y) {
   inp$multi <- is.matrix(y)
   if (inp$multi) {
     nm <- colnames(y)
-    if (is.null(nm) || any(nm == "")) nm <- as.character(seq_len(ncol(y)))
+    if (is.null(nm) || any(is.na(nm) | nm == "")) {
+      nm <- as.character(seq_len(ncol(y)))
+    }
     inp$y <- check_responses(y, nm, "`y`")
   } else {
     if (any(!is.finite(y))) {
@@ -434,8 +436,6 @@ build_output <- function(inp, res) {
   rows <- res$rows
   if (!is.null(rows)) {
     inp$y <- inp$y[rows, , drop = FALSE]
-    inp$coords <- inp$coords[rows, , drop = FALSE]
-    if (!is.null(inp$locations)) inp$locations <- inp$locations[rows, ]
   }
   if (isTRUE(inp$multi)) {
     return(build_output_multi(inp, res))
@@ -454,13 +454,13 @@ build_output <- function(inp, res) {
   if (!is.null(res$n_heldout)) {
     out$n_heldout <- res$n_heldout
   }
-  attach_locations(out, inp)
+  attach_locations(out, inp, rows)
 }
 
 build_output_multi <- function(inp, res) {
   m <- nrow(inp$y)
   n_resp <- ncol(inp$y)
-  names <- colnames(inp$y)
+  resp <- colnames(inp$y)
   observed <- as.vector(inp$y)
   pred <- as.vector(res$pred)
   var <- rep(res$var, n_resp)
@@ -476,26 +476,30 @@ build_output_multi <- function(inp, res) {
   if (!is.null(res$n_heldout)) {
     out$n_heldout <- rep(res$n_heldout, n_resp)
   }
-  out$response <- factor(rep(names, each = m), levels = names)
-  attach_locations(out, inp, rep(seq_len(m), n_resp))
+  out$response <- factor(rep(resp, each = m), levels = resp)
+  rows <- if (is.null(res$rows)) seq_len(m) else res$rows
+  attach_locations(out, inp, rep(rows, n_resp))
 }
 
-# Appends the locations of rows `idx` of the (subset) input to `out`; all
-# rows, unchanged, when `idx` is NULL.
+# Appends the locations of input rows `idx` (all rows, unchanged, when
+# `idx` is NULL) to `out`. Only the coordinates, the geometry (sf) or the
+# CRS (sp) are used, so the input's attribute table is never subset.
 attach_locations <- function(out, inp, idx = NULL) {
-  if (!is.null(idx)) {
-    inp$coords <- inp$coords[idx, , drop = FALSE]
-    if (!is.null(inp$locations)) inp$locations <- inp$locations[idx, ]
-  }
+  coords <- inp$coords
+  if (!is.null(idx)) coords <- coords[idx, , drop = FALSE]
   switch(inp$kind,
     data.frame = {
-      cc <- as.data.frame(inp$coords)
+      cc <- as.data.frame(coords)
       names(cc) <- inp$coord_names
       cbind(out, cc)
     },
-    sf = sf::st_sf(out, geometry = sf::st_geometry(inp$locations)),
+    sf = {
+      geom <- sf::st_geometry(inp$locations)
+      if (!is.null(idx)) geom <- geom[idx]
+      sf::st_sf(out, geometry = geom)
+    },
     sp = sp::SpatialPointsDataFrame(
-      inp$coords, out,
+      coords, out,
       proj4string = inp$locations@proj4string
     )
   )

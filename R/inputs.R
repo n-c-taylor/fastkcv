@@ -4,9 +4,10 @@
 #' `locations = ~x + y`, an `sf` object, or an `sp` `Spatial*DataFrame`.
 #'
 #' @return A list with `y` (n x T matrix; T = 1 for a vector response),
-#'   `multi` (whether the response was a matrix), `F` (n x p trend matrix), `coords`
-#'   (n x 2 matrix), `kind` ("data.frame", "sf" or "sp"), `locations` (the
-#'   spatial input, for rebuilding output), and `coord_names`.
+#'   `multi` (whether the response was a matrix), `F` (n x p trend matrix),
+#'   `coords` (n x 2 matrix), `kind` ("data.frame", "sf" or "sp"),
+#'   `locations` (the spatial input, for rebuilding output), and
+#'   `coord_names`.
 #' @noRd
 parse_inputs <- function(formula, locations, data) {
   if (!inherits(formula, "formula") || length(formula) != 3) {
@@ -53,11 +54,21 @@ parse_inputs <- function(formula, locations, data) {
         call. = FALSE
       )
     }
+    if (any(is.infinite(y))) {
+      stop(
+        "The response has ", sum(is.infinite(y)), " infinite value(s) ",
+        "(e.g. log(0)). Remove them before cross-validation.",
+        call. = FALSE
+      )
+    }
     y <- matrix(as.numeric(y), ncol = 1)
   }
-  F <-stats::model.matrix(stats::delete.response(stats::terms(formula)), mf)
-  if (anyNA(F)) {
-    stop("Trend covariates in `formula` contain missing values.", call. = FALSE)
+  F <- stats::model.matrix(stats::delete.response(stats::terms(formula)), mf)
+  if (any(!is.finite(F))) {
+    stop("Trend covariates in `formula` contain missing or non-finite ",
+      "values (e.g. log(0)).",
+      call. = FALSE
+    )
   }
   check_trend(F)
   attr(F, "assign") <- NULL
@@ -85,9 +96,10 @@ response_names <- function(formula, y) {
     args <- vapply(as.list(lhs)[-1], function(a) {
       paste(deparse(a, width.cutoff = 500L), collapse = " ")
     }, "")
-    nm[nm == ""] <- args[nm == ""]
+    unnamed <- is.na(nm) | nm == ""
+    nm[unnamed] <- args[unnamed]
   }
-  if (any(nm == "")) nm <- as.character(seq_len(ncol(y)))
+  if (any(is.na(nm) | nm == "")) nm <- as.character(seq_len(ncol(y)))
   nm
 }
 
@@ -96,27 +108,27 @@ is_cbind <- function(lhs) {
 }
 
 # Checks an n x T matrix of responses and returns it as a double matrix
-# with column names `names` and no row names. `what` starts the messages.
-check_responses <- function(y, names, what) {
+# with column names `nm` and no row names. `what` starts the messages.
+check_responses <- function(y, nm, what) {
   if (!is.numeric(y) || length(dim(y)) != 2) {
     stop(what, " must be a numeric vector or matrix.", call. = FALSE)
   }
   if (ncol(y) == 0) {
     stop(what, " has no columns.", call. = FALSE)
   }
-  if (anyDuplicated(names)) {
+  if (anyDuplicated(nm)) {
     stop(what, " has duplicate column names (",
-      paste0("`", unique(names[duplicated(names)]), "`", collapse = ", "),
+      paste0("`", unique(nm[duplicated(nm)]), "`", collapse = ", "),
       "); each response needs a distinct name.",
       call. = FALSE
     )
   }
-  y <- matrix(as.double(y), nrow(y), ncol(y), dimnames = list(NULL, names))
+  y <- matrix(as.double(y), nrow(y), ncol(y), dimnames = list(NULL, nm))
   bad <- colSums(!is.finite(y))
   if (any(bad > 0)) {
     j <- which(bad > 0)[1]
     stop(
-      "Response `", names[j], "` has ", bad[j], " missing or non-finite ",
+      "Response `", nm[j], "` has ", bad[j], " missing or non-finite ",
       "value(s)",
       if (sum(bad > 0) > 1) {
         paste0(" (and ", sum(bad > 0) - 1, " other response(s))")

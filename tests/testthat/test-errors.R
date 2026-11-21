@@ -240,9 +240,11 @@ test_that("an asymmetric covariance matrix is rejected", {
   expect_error(kcv_engine(Ca, matrix(1, 20, 1), rnorm(20), 1:20),
     "`C` is not symmetric")
   expect_error(kcv_engine_prepare(Ca, matrix(1, 20, 1)), "not symmetric")
+  # A NaN used to be reported as an asymmetry; it is a non-finite entry.
   Cn <- C
   Cn[20, 3] <- NaN
-  expect_error(kcv_engine_prepare(Cn, matrix(1, 20, 1)), "not symmetric")
+  expect_error(kcv_engine_prepare(Cn, matrix(1, 20, 1)),
+    "`C` contains missing or non-finite values")
   # Rounding-level asymmetry (far below 1e-8 times the diagonal) is fine.
   Cr <- C
   Cr[2, 1] <- C[2, 1] + 1e-12
@@ -262,4 +264,56 @@ test_that("running out of memory after the factorization is reported", {
     "Out of memory while forming the blocks.*`targets` or a smaller")
   # The prepare stage keeps the n x n message.
   expect_error(raise_status(6, NA, 100, 1), "n = 100 .*could not be allocated")
+})
+
+test_that("non-finite entries of C are rejected", {
+  set.seed(3)
+  xy <- matrix(runif(40), ncol = 2)
+  C <- exp(-as.matrix(dist(xy)) / 0.3) + diag(0.1, 20)
+  F <- matrix(1, 20, 1)
+  msg <- "`C` contains missing or non-finite values"
+  # NaN on the diagonal got past OpenBLAS's dpotrf and failed later with a
+  # raw Armadillo error ("solve(): solution not found").
+  for (v in c(NaN, NA, Inf)) {
+    Cd <- C
+    Cd[3, 3] <- v
+    expect_error(kcv_engine_prepare(Cd, F), msg)
+    expect_error(kcv_engine(Cd, F, rnorm(20), 1:20), msg)
+  }
+  # A symmetric pair of Inf was reported as "not symmetric".
+  Ci <- C
+  Ci[1, 2] <- Ci[2, 1] <- Inf
+  expect_error(kcv_engine_prepare(Ci, F), msg)
+  Ci[1, 2] <- Ci[2, 1] <- -Inf
+  expect_error(kcv_engine_prepare(Ci, F), msg)
+  # Non-finite wins over asymmetry, wherever it is.
+  Cb <- C
+  Cb[2, 1] <- 5
+  Cb[20, 19] <- NaN
+  expect_error(kcv_engine_prepare(Cb, F), msg)
+  expect_error(raise_status(8, NA, 20, 2), msg)
+})
+
+test_that("infinite responses and trend covariates are rejected by kcv()", {
+  meuse <- meuse_df()
+  # An infinite response used to give NaN for every prediction, silently.
+  inf_y <- meuse
+  inf_y$z <- log(meuse$zinc)
+  inf_y$z[5] <- Inf
+  expect_error(kcv(z ~ 1, ~ x + y, inf_y, model = m_ok),
+    "The response has 1 infinite value\\(s\\)")
+  expect_error(kcv_prepare(z ~ 1, ~ x + y, inf_y, model = m_ok),
+    "infinite value")
+  # The NA message is unchanged.
+  inf_y$z[6] <- NA
+  expect_error(kcv(z ~ 1, ~ x + y, inf_y, model = m_ok),
+    "The response has 1 missing value\\(s\\)")
+  # meuse has 7 rows with dist = 0, so log(dist) is -Inf there; this used to
+  # end in a raw Armadillo error ("solve(): solution not found").
+  expect_identical(sum(meuse$dist == 0), 7L)
+  msg <- "Trend covariates in `formula` contain missing or non-finite values"
+  expect_error(kcv(log(zinc) ~ log(dist), ~ x + y, meuse, model = m_ok), msg)
+  expect_error(kcv(log(zinc) ~ log(dist), ~ x + y, meuse, model = m_ok,
+    nfold = rep(1:5, 31)), msg)
+  expect_error(kcv(log(zinc) ~ log(dist), meuse_sf(), model = m_ok), msg)
 })

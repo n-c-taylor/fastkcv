@@ -6,7 +6,8 @@ This is a new submission.
 
 * Local: Linux Mint 22.3 (Ubuntu 24.04 base), R 4.6.2, with the reference
   BLAS/LAPACK and with OpenBLAS 0.3.26.
-* GitHub Actions: ubuntu-latest, R release.
+* GitHub Actions: ubuntu-latest (R devel, release and oldrel-1),
+  macos-latest and windows-latest (R release).
 
 ## R CMD check results
 

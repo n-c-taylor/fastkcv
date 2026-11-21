@@ -19,8 +19,8 @@ First release.
   each response. Simple kriging takes one `beta` for all responses or a
   p x T matrix (also in `kcv_run(beta = )` and `kcv_engine_run(beta = )`).
 * `kcv_engine()`, `kcv_engine_prepare()` and `kcv_engine_run()`: the same
-  computation from a precomputed covariance matrix, for a matrix-valued
-  response.
+  computation from a precomputed covariance matrix, also for a
+  matrix-valued response.
 * Fold builders `fold_random()` (the same draw as `krige.cv(nfold = k)`),
   `fold_blocks()` and `fold_kmeans()`.
 * `kcv_metrics()`: RMSE, MAE, bias, z-score mean and variance, and

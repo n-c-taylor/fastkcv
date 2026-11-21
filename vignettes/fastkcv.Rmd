@@ -295,8 +295,12 @@ package for three reasons:
 algebra. It has no nugget term, works with tensor-product kernels on a
 design matrix rather than gstat variogram models on spatial data, and
 offers neither k-fold nor buffered designs. Without a nugget, and from the
-same covariance matrix, the two agree to about 1e-15 for simple kriging
-and for ordinary kriging with the trend re-estimated in each fold. End to
+same covariance matrix, the two give the same variances (to about 1e-15)
+and predictions that agree to about 1e-13, for simple kriging and for
+ordinary kriging with the trend re-estimated in each fold. The exception is
+the smoother `matern5_2` kernel with ordinary kriging: without a nugget its
+covariance matrix is badly conditioned, and the predictions agree only to
+between 1e-9 and 1e-7. End to
 end (model setup plus leave-one-out), fastkcv is 1.6 to 4.1 times faster
 with OpenBLAS and 1.4 to 2.1 times with the reference BLAS. On the
 leave-one-out step alone the two are about level (0.9 to 1.8 times with

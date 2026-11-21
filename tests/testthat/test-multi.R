@@ -376,10 +376,14 @@ test_that("several responses match gstat::krige for buffered LOO", {
       )
       b <- response_block(all, multi_names[j])
       expect_equal(b$var1.pred[targets], ref$pred, tolerance = tol)
+      expect_close(b$var1.pred[targets], ref$pred)
       expect_equal(b$var1.var[targets], ref$var, tolerance = tol)
+      expect_close(b$var1.var[targets], ref$var)
       b <- response_block(sub, multi_names[j])
       expect_equal(b$var1.pred, ref$pred, tolerance = tol)
+      expect_close(b$var1.pred, ref$pred)
       expect_equal(b$var1.var, ref$var, tolerance = tol)
+      expect_close(b$var1.var, ref$var)
       expect_identical(b$n_heldout, lengths(sets)[targets])
     }
   }
@@ -399,8 +403,10 @@ test_that("several responses: kcv_engine_run() with a p x T beta", {
   out <- kcv_engine_run(p, s$Y, folds, beta = B)
   ref <- kcv_engine_r(s$C, s$F, s$Y, folds, beta = B)
   expect_equal(out$pred, ref$pred, tolerance = tol)
+  expect_close(out$pred, ref$pred)
   ref <- kcv_reference(s$C, s$F, s$Y, folds, beta = B)
   expect_equal(out$pred, ref$pred, tolerance = tol)
+  expect_close(out$pred, ref$pred)
   expect_identical(kcv_engine(s$C, s$F, s$Y, folds, beta = B), out)
   for (j in 1:3) {
     one <- kcv_engine_run(p, s$Y[, j], folds, beta = B[, j])
@@ -448,6 +454,20 @@ test_that("errors for several responses", {
     kcv_run(p, y = `colnames<-`(Y, c("a", "a"))),
     "`y` has duplicate column names"
   )
+  # NA column names used to fail with "missing value where TRUE/FALSE
+  # needed"; they are treated like empty names.
+  Yna <- `colnames<-`(Y, c("a", NA))
+  expect_identical(levels(kcv_run(p, y = Yna)$response), c("1", "2"))
+  meuse$Yna <- Yna
+  expect_identical(
+    levels(kcv(Yna ~ 1, ~ x + y, meuse, model = m_multi)$response),
+    c("1", "2")
+  )
+  expect_identical(
+    levels(kcv(cbind(a = log(zinc), log(lead)) ~ 1, ~ x + y, meuse,
+      model = m_multi)$response),
+    c("a", "log(lead)")
+  )
   expect_error(kcv_run(p, y = Y, beta = 6), "only be given for a prepared")
 
   ps <- kcv_prepare(log(zinc) ~ sqrt(dist), ~ x + y, meuse,
@@ -489,5 +509,15 @@ test_that("the memory budget limits the number of responses", {
   })
   withr::with_options(list(fastkcv.max_gb = 2e-4), {
     expect_error(kcv_run(p, y = Y), "budget.*\\. Raise the budget")
+  })
+  # kcv_engine_run() returns only the n x T predictions, so it counts one
+  # output column per response, not ten: 8 (4 n + n) = 6,200 bytes per
+  # response at n = 155. A budget of 2.5e-4 GB leaves 57,800 bytes beside
+  # the factor: room for 9 responses (it used to refuse more than 3).
+  pe <- kcv_engine_prepare(diag(155), matrix(1, 155, 1))
+  withr::with_options(list(fastkcv.max_gb = 2.5e-4), {
+    expect_no_error(kcv_engine_run(pe, Y[, 1:9], seq_len(155)))
+    expect_error(kcv_engine_run(pe, Y, seq_len(155)),
+      "10 responses at n = 155.*batches of at most 9")
   })
 })

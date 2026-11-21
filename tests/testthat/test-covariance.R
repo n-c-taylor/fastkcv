@@ -36,6 +36,11 @@ test_that("covariance matches variogramLine for each supported model", {
       gstat_pairwise(models[[nm]], xy),
       tolerance = tol, label = nm
     )
+    expect_close(
+      covariance_matrix(models[[nm]], xy),
+      gstat_pairwise(models[[nm]], xy),
+      label = nm
+    )
   }
 })
 
@@ -52,6 +57,9 @@ test_that("covariance matches variogramLine under 2D geometric anisotropy", {
         covariance_matrix(m, xy), gstat_pairwise(m, xy),
         tolerance = tol, label = paste("anis", ang, ratio)
       )
+      expect_close(covariance_matrix(m, xy), gstat_pairwise(m, xy),
+        label = paste("anis", ang, ratio)
+      )
     }
   }
 })
@@ -60,6 +68,7 @@ test_that("nested components with different anisotropies are handled", {
   m <- gstat::vgm(0.6, "Sph", 400, anis = c(30, 0.5),
     add.to = gstat::vgm(0.4, "Exp", 200, 0.1, anis = c(120, 0.3)))
   expect_equal(covariance_matrix(m, xy), gstat_pairwise(m, xy), tolerance = tol)
+  expect_close(covariance_matrix(m, xy), gstat_pairwise(m, xy))
 })
 
 test_that("cross-covariance between two coordinate sets", {
@@ -103,10 +112,18 @@ test_that("C++ covariance matches the variogramLine() version", {
     expect_equal(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
       tolerance = tol, label = nm
     )
+    expect_close(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
+      label = nm
+    )
     expect_equal(
       covariance_matrix(m, xy2[1:25, ], xy2[26:60, ]),
       covariance_matrix_r(m, xy2[1:25, ], xy2[26:60, ]),
       tolerance = tol, label = paste(nm, "cross")
+    )
+    expect_close(
+      covariance_matrix(m, xy2[1:25, ], xy2[26:60, ]),
+      covariance_matrix_r(m, xy2[1:25, ], xy2[26:60, ]),
+      label = paste(nm, "cross")
     )
   }
   for (ang in c(0, 45, 90)) {
@@ -115,6 +132,9 @@ test_that("C++ covariance matches the variogramLine() version", {
         m <- gstat::vgm(1, type, 300, 0.1, anis = c(ang, ratio))
         expect_equal(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
           tolerance = tol, label = paste(type, ang, ratio)
+        )
+        expect_close(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
+          label = paste(type, ang, ratio)
         )
       }
     }
@@ -158,10 +178,12 @@ test_that("Matern with large kappa stays finite where gstat returns NaN", {
   expect_true(any(over))
   ref[over] <- 1 - x[over]^2 / (4 * (k - 1))
   expect_equal(C, ref, tolerance = tol)
+  expect_close(C, ref)
   expect_true(all(C[over] < 1))
   # Where gstat is finite it agrees.
   ok <- is.finite(covariance_matrix_r(m, xy3))
   expect_equal(C[ok], covariance_matrix_r(m, xy3)[ok], tolerance = tol)
+  expect_close(C[ok], covariance_matrix_r(m, xy3)[ok])
 })
 
 test_that("Ste with large kappa approaches the Gaussian model", {
@@ -178,6 +200,7 @@ test_that("Ste with large kappa approaches the Gaussian model", {
       gstat::vgm(1, "Mat", 200 / (2 * sqrt(k)), kappa = k), xy3
     )
     expect_equal(mat, ste, tolerance = tol)
+    expect_close(mat, ste)
     max(abs(ste - gau))
   }, numeric(1))
   expect_lt(err[1], 0.25 / 50)

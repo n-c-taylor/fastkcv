@@ -32,11 +32,30 @@ oracle_formulas <- function() {
 
 cv_cols <- c("var1.pred", "var1.var", "observed", "residual", "zscore")
 
+# Element-wise agreement: max |a - b| <= tolerance * max(1, max |b|).
+# testthat's expect_equal() tests the mean relative difference over the
+# elements that differ; against gstat almost every element differs by
+# about 1e-15, so one prediction off by 1e-6 still passed at 1e-8. The
+# worst case measured under this criterion is 2.4e-10 (Gaussian model
+# without nugget, reference BLAS), so `tol` holds element-wise.
+expect_close <- function(a, b, tolerance = tol, label = "values") {
+  a <- as.vector(unname(a))
+  b <- as.vector(unname(b))
+  expect_identical(length(a), length(b), label = paste(label, "length"))
+  err <- max(abs(a - b)) / max(1, abs(b))
+  expect(
+    !is.na(err) && err <= tolerance,
+    sprintf("%s: largest scaled difference %.3g exceeds %.3g.", label, err,
+      tolerance)
+  )
+}
+
 expect_cv_equal <- function(a, b, tolerance = tol) {
   a <- as.data.frame(a)
   b <- as.data.frame(b)
   for (col in cv_cols) {
     expect_equal(a[[col]], b[[col]], tolerance = tolerance, label = col)
+    expect_close(a[[col]], b[[col]], tolerance = tolerance, label = col)
   }
   expect_equal(as.vector(a$fold), as.vector(b$fold))
 }

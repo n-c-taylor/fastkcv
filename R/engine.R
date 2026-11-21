@@ -1,9 +1,9 @@
 #' Exact kriging cross-validation from a covariance matrix
 #'
 #' Low-level engine behind [kcv()], implemented in C++. Given the covariance
-#' matrix `C` of the observations, the trend matrix `F` and fold assignments, it computes
-#' cross-validation predictions and variances for every fold from a single
-#' factorization of `C`:
+#' matrix `C` of the observations, the trend matrix `F` and fold
+#' assignments, it computes cross-validation predictions and variances for
+#' every fold from a single factorization of `C`:
 #'
 #' * ordinary/universal kriging (`beta = NULL`, trend re-estimated by GLS in
 #'   each fold): \eqn{Q = C^{-1} - C^{-1}F(F'C^{-1}F)^{-1}F'C^{-1}};
@@ -31,7 +31,7 @@
 #' bytes) for as long as it exists.
 #'
 #' @param C n x n covariance matrix of the observations (symmetric positive
-#'   definite; an asymmetric matrix is an error).
+#'   definite; an asymmetric matrix or a non-finite entry is an error).
 #' @param F n x p trend matrix (a column of ones for ordinary kriging).
 #' @param y Response: a numeric vector or an n x T matrix. Each column is
 #'   cross-validated with the same kriging weights.
@@ -118,7 +118,8 @@ kcv_engine_run <- function(prepared, y, folds, beta = NULL) {
     )
   }
   prepared <- use_beta(prepared, beta, ncol(y))
-  check_run_memory(n, ncol(y), n)
+  # The engine returns only the n x T predictions (and one variance vector).
+  check_run_memory(n, ncol(y), n, out_cols = 1)
   run_prepared(prepared, y, folds)
 }
 
@@ -204,15 +205,16 @@ use_beta <- function(p, beta, n_resp) {
 
 # Up-front memory check of the run stage for several responses: the C++
 # work matrices (y, Wt y, Q y, predictions: about 4 n doubles per response)
-# and the long output (about 10 n_out doubles per response) must fit in the
-# budget left after the n x n factor. One response is never checked, so
-# single-response behavior is unchanged.
-check_run_memory <- function(n, n_resp, n_out) {
+# and the output (`out_cols` columns of n_out doubles per response: about
+# 10 for the long kcv() output, 1 for the prediction matrix of
+# kcv_engine_run()) must fit in the budget left after the n x n factor. One
+# response is never checked, so single-response behavior is unchanged.
+check_run_memory <- function(n, n_resp, n_out, out_cols = 10) {
   if (n_resp <= 1) {
     return(invisible(TRUE))
   }
   max_gb <- getOption("fastkcv.max_gb", 6.4)
-  per_col <- 8 * (4 * as.double(n) + 10 * as.double(n_out))
+  per_col <- 8 * (4 * as.double(n) + out_cols * as.double(n_out))
   avail <- max_gb * 1e9 - 8 * as.double(n)^2
   if (per_col * n_resp > avail) {
     err_responses_memory(n, n_resp, per_col * n_resp / 1e9, max_gb,
@@ -241,8 +243,9 @@ err_responses_memory <- function(n, n_resp, gb, max_gb, batch) {
 # Buffered leave-one-out from a prepared factorization: each target point i
 # (row numbers, all rows by default) is predicted from the observations
 # farther than `radius` from it. `rows` is set only when `targets` is given,
-# so that build_output() subsets the input only then. `method` ("auto", "pairs" or "points")
-# selects how the blocks Q[I, I] are formed; see run_buffer_cpp().
+# so that build_output() subsets the input only then. `method` ("auto",
+# "pairs" or "points") selects how the blocks Q[I, I] are formed; see
+# run_buffer_cpp().
 run_buffer_prepared <- function(p, y, radius, targets = NULL,
                                 method = c("auto", "pairs", "points")) {
   method <- match.arg(method)
@@ -340,7 +343,8 @@ raise_status <- function(status, f, n, matrices) {
     } else {
       err_memory(n, matrices)
     },
-    err_not_symmetric()
+    err_not_symmetric(),
+    err_not_finite_c()
   )
 }
 
@@ -348,13 +352,6 @@ check_prepared <- function(x) {
   if (!inherits(x, "kcv_prepared")) {
     stop("`prepared` must be a kcv_prepared object from kcv_prepare() or ",
       "kcv_engine_prepare().",
-      call. = FALSE
-    )
-  }
-  if (is.null(x$Wt)) {
-    stop("`prepared` was made by an earlier version of fastkcv, which ",
-      "stored the factorization differently; recreate it with ",
-      "kcv_prepare() or kcv_engine_prepare().",
       call. = FALSE
     )
   }
@@ -696,9 +693,13 @@ raise_buffer_status <- function(status, i, m, radius, n) {
     "Point ", i, " (the buffer of radius ", format(radius), " holds out ",
     m, " of ", n, " observations)"
   )
+  # Statuses 1 and 2 belong to the prepare stage and never occur here.
+  unexpected <- function() {
+    stop("Unexpected status ", status, ".", call. = FALSE)
+  }
   switch(status,
-    err_not_pd(),
-    err_rank_deficient(),
+    unexpected(),
+    unexpected(),
     err_every_obs(i, label),
     err_unidentifiable(i, label,
       region = "the buffer", advice = "a smaller radius"
@@ -706,6 +707,10 @@ raise_buffer_status <- function(status, i, m, radius, n) {
     err_singular(i, label, region = "point"),
     err_run_memory("`targets` or a smaller `buffer`")
   )
+}
+
+err_not_finite_c <- function() {
+  stop("`C` contains missing or non-finite values.", call. = FALSE)
 }
 
 err_not_symmetric <- function() {
