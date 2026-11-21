@@ -22,6 +22,7 @@ Roxygen: list(markdown = TRUE)
 Suggests: 
     bench,
     knitr,
+    RhpcBLASctl,
     rmarkdown,
     testthat (>= 3.0.0),
     withr

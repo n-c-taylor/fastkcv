@@ -10,6 +10,12 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6,
   fig.height = 4.5, dpi = 72)
+# One BLAS thread when built on CRAN (fastkcv is single-threaded; a
+# multithreaded BLAS would use several cores). Local builds keep the default.
+if (!identical(Sys.getenv("NOT_CRAN"), "true") &&
+  requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+  RhpcBLASctl::blas_set_num_threads(1)
+}
 ```
 
 fastkcv computes leave-one-out and k-fold cross-validation for global
