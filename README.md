@@ -17,8 +17,9 @@ numerical precision.
 
 * Leave-one-out, k-fold and buffered (spatial) leave-one-out
   cross-validation for simple, ordinary and universal kriging.
-* gstat variogram models `Nug`, `Exp`, `Sph`, `Gau`, `Mat` and `Ste`, nested
-  sums of them and 2D geometric anisotropy. data.frame, `sf` and `sp` data.
+* gstat variogram models `Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste`, `Cir`,
+  `Pen`, `Bes`, `Wav` and `Hol`, nested sums of them and 2D geometric
+  anisotropy. data.frame, `sf` and `sp` data.
 * Random, spatial block and k-means fold builders, and `kcv_metrics()` to
   compare fold designs (RMSE, bias, z-scores, interval coverage).
 * Several responses at the same locations (`cbind(z1, z2) ~ 1`, or

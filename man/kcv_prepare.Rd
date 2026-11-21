@@ -31,8 +31,9 @@ holding both the locations and the variables (then \code{data} is not used).}
 \item{data}{A data.frame, when \code{locations} is a formula.}
 
 \item{model}{A \code{gstat} variogram model (\code{\link[gstat:vgm]{gstat::vgm()}}) with fixed
-parameters. Supported: \code{Nug}, \code{Exp}, \code{Sph}, \code{Gau}, \code{Mat}, \code{Ste} and nested
-sums of them, with optional 2D geometric anisotropy.}
+parameters. Supported: \code{Nug}, \code{Exp}, \code{Sph}, \code{Gau}, \code{Mat}, \code{Ste}, \code{Cir},
+\code{Pen}, \code{Bes}, \code{Wav}, \code{Hol} and nested sums of them, with optional 2D
+geometric anisotropy.}
 
 \item{beta}{Optional, for a \code{prepared} object made for simple kriging
 (with \code{beta}): new trend coefficients, a vector of length p or a p x T

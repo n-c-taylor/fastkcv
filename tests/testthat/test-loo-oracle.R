@@ -26,6 +26,19 @@ test_that("LOO matches krige.cv on meuse for each model, OK and UK", {
   }
 })
 
+test_that("LOO matches krige.cv for Cir, Pen, Bes, Wav and Hol", {
+  skip_on_cran()
+  meuse <- meuse_df()
+  for (m in oracle_models_extra()) {
+    for (f in oracle_formulas()) {
+      expect_cv_equal(
+        kcv(f, ~ x + y, meuse, model = m),
+        krige_cv(f, ~ x + y, meuse, model = m)
+      )
+    }
+  }
+})
+
 test_that("LOO matches krige.cv for sp and sf inputs", {
   skip_on_cran()
   m <- oracle_models()$NugSph

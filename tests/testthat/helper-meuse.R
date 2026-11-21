@@ -26,6 +26,17 @@ oracle_models <- function() {
   )
 }
 
+# The bounded models other than Nug/Exp/Sph/Gau/Mat/Ste, at meuse scale.
+oracle_models_extra <- function() {
+  list(
+    Cir = gstat::vgm(0.5, "Cir", 900, 0.1),
+    Pen = gstat::vgm(0.5, "Pen", 1000, 0.1),
+    Bes = gstat::vgm(0.5, "Bes", 250, 0.1),
+    Wav = gstat::vgm(0.5, "Wav", 600, 0.1),
+    Hol = gstat::vgm(0.5, "Hol", 200, 0.1)
+  )
+}
+
 oracle_formulas <- function() {
   list(OK = log(zinc) ~ 1, UK = log(zinc) ~ sqrt(dist))
 }

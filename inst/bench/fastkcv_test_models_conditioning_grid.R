@@ -32,19 +32,30 @@ safe_max <- function(x) {
   if (length(x) == 0 || all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
 }
 
+# Captures R warnings and, separately, lines printed to the console's message
+# stream (stderr). Compiled code (e.g. Armadillo through Rcpp::Rcerr) can
+# print there without raising an R condition, which withCallingHandlers()
+# cannot see.
 eval_capture <- function(expr, env) {
   warns <- character(0)
-  val <- tryCatch(
-    withCallingHandlers(
-      eval(expr, envir = env),
-      warning = function(w) {
-        warns <<- c(warns, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
+  val <- NULL
+  console <- utils::capture.output(
+    val <- tryCatch(
+      withCallingHandlers(
+        eval(expr, envir = env),
+        warning = function(w) {
+          warns <<- c(warns, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) e
     ),
-    error = function(e) e
+    type = "message"
   )
-  list(value = val, warnings = warns, is_err = inherits(val, "error"))
+  list(
+    value = val, warnings = warns, console = console,
+    is_err = inherits(val, "error")
+  )
 }
 
 compare_pair <- function(label, expr_g, expr_f, tol_pred = 1e-10, tol_var = 1e-10) {
@@ -62,7 +73,7 @@ compare_pair <- function(label, expr_g, expr_f, tol_pred = 1e-10, tol_var = 1e-1
     return(data.frame(
       case = label, max_abs_pred = NA_real_, max_abs_var = NA_real_,
       na_parity = NA, warn_g = length(rg$warnings), warn_f = length(rf$warnings),
-      status = status, note = trimws(gsub("^\\|\\s*|\\s*\\|$", "", msg)),
+      console_f = length(rf$console), status = status, note = trimws(gsub("^\\|\\s*|\\s*\\|$", "", msg)),
       stringsAsFactors = FALSE
     ))
   }
@@ -85,6 +96,7 @@ compare_pair <- function(label, expr_g, expr_f, tol_pred = 1e-10, tol_var = 1e-1
     na_parity = na_parity,
     warn_g = length(rg$warnings),
     warn_f = length(rf$warnings),
+    console_f = length(rf$console),
     status = if (ok) "PASS" else "FAIL",
     note = "",
     stringsAsFactors = FALSE
@@ -158,7 +170,10 @@ zoo_rows <- lapply(names(vgm_zoo), function(nm) {
 res_zoo <- do.call(rbind, zoo_rows)
 
 cat("=== PART 1: Variogram Model Zoo (n = 100, OK LOO-CV) ===\n")
-print(res_zoo[, c("case", "max_abs_pred", "max_abs_var", "na_parity", "warn_g", "warn_f", "status")],
+print(res_zoo[, c(
+  "case", "max_abs_pred", "max_abs_var", "na_parity", "warn_g", "warn_f",
+  "console_f", "status"
+)],
   row.names = FALSE
 )
 zoo_notes <- res_zoo[nzchar(res_zoo$note), c("case", "status", "note")]
@@ -234,7 +249,10 @@ part2_rows <- list(
 res_part2 <- do.call(rbind, part2_rows)
 
 cat("\n=== PART 2: 3D Kriging, Factors/Interactions & NA Handling ===\n")
-print(res_part2[, c("case", "max_abs_pred", "max_abs_var", "na_parity", "warn_g", "warn_f", "status")],
+print(res_part2[, c(
+  "case", "max_abs_pred", "max_abs_var", "na_parity", "warn_g", "warn_f",
+  "console_f", "status"
+)],
   row.names = FALSE
 )
 p2_notes <- res_part2[nzchar(res_part2$note), c("case", "status", "note")]
@@ -245,7 +263,10 @@ if (nrow(p2_notes) > 0) {
 
 # ==============================================================================
 # PART 3: Coordinate-Offset Conditioning Sweep (Quadratic UK LOO-CV)
-# Compares both solvers against the exact offset = 0 reference solution
+# Compares both solvers against the exact offset = 0 reference solution.
+# fastkcv rejects a trend whose QR rank (tol 1e-7) is deficient; the error
+# message is printed below the table. Centering the coordinates (no
+# scaling) leaves a full quadratic trend's predictions unchanged.
 # ==============================================================================
 
 v_exp <- vgm(psill = 1.0, model = "Exp", range = 0.3, nugget = 0.1)
@@ -277,6 +298,13 @@ cond_rows <- lapply(offsets, function(off) {
     quote(fastkcv::kcv(f_std, dat_off, model = v_exp, nfold = nrow(dat_off))),
     environment()
   )
+  df_cen <- df_off[, c("x", "y", "z")]
+  df_cen$x <- df_cen$x - mean(df_cen$x)
+  df_cen$y <- df_cen$y - mean(df_cen$y)
+  rf_cen <- eval_capture(
+    quote(fastkcv::kcv(f_raw, ~ x + y, df_cen, model = v_exp)),
+    environment()
+  )
 
   err_vs_ref <- function(res) {
     if (res$is_err) NA_real_ else safe_max(abs(extract_cv(res$value)$pred - ref_pred))
@@ -287,15 +315,28 @@ cond_rows <- lapply(offsets, function(off) {
     kappa_X = kappa_raw,
     gstat_raw_err = err_vs_ref(rg_raw),
     fastkcv_raw_err = err_vs_ref(rf_raw),
+    fastkcv_raw_status = if (rf_raw$is_err) "error" else "ok",
     fastkcv_std_err = err_vs_ref(rf_std),
+    fastkcv_centered_err = err_vs_ref(rf_cen),
     fastkcv_raw_warns = length(rf_raw$warnings),
+    fastkcv_raw_console = length(rf_raw$console),
+    fastkcv_raw_msg = if (rf_raw$is_err) conditionMessage(rf_raw$value) else "",
     stringsAsFactors = FALSE
   )
 })
 res_cond <- do.call(rbind, cond_rows)
 
 cat("\n=== PART 3: Quadratic UK Conditioning Sweep vs. Exact Reference (n = 120) ===\n")
-print(res_cond, row.names = FALSE)
+print(res_cond[, setdiff(names(res_cond), "fastkcv_raw_msg")], row.names = FALSE)
+cond_msgs <- unique(res_cond$fastkcv_raw_msg[nzchar(res_cond$fastkcv_raw_msg)])
+if (length(cond_msgs) > 0) {
+  cat("\nfastkcv errors on raw coordinates (offsets ",
+    paste(res_cond$offset[nzchar(res_cond$fastkcv_raw_msg)], collapse = ", "),
+    "):\n",
+    sep = ""
+  )
+  cat(strwrap(cond_msgs, width = 78, prefix = "  "), sep = "\n")
+}
 
 # ==============================================================================
 # PART 4: Real-World Workflow — Variogram Hyperparameter Grid Search (meuse)

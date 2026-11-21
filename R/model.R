@@ -1,12 +1,17 @@
-# Supported variogram models: all are bounded, so C(h) = sill - gamma(h)
-# is a valid covariance.
-supported_models <- c("Nug", "Exp", "Sph", "Gau", "Mat", "Ste")
+# Supported variogram models: all are bounded and positive (semi)definite in
+# two dimensions, so C(h) = sill - gamma(h) is a valid covariance. The C++
+# type code is the position minus 1; append new models at the end.
+supported_models <- c(
+  "Nug", "Exp", "Sph", "Gau", "Mat", "Ste",
+  "Cir", "Pen", "Bes", "Wav", "Hol"
+)
 
 #' Validate a gstat variogram model for use in fastkcv
 #'
 #' Checks that `model` is a `gstat` `variogramModel` built only from bounded
-#' components (`Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste`, or nested sums of
-#' them) with at most 2D geometric anisotropy.
+#' components (`Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste`, `Cir`, `Pen`,
+#' `Bes`, `Wav`, `Hol`, or nested sums of them) with at most 2D geometric
+#' anisotropy.
 #'
 #' @param model A `variogramModel`, as returned by [gstat::vgm()].
 #' @return `model`, invisibly.
@@ -25,8 +30,19 @@ validate_model <- function(model) {
   types <- as.character(model$model)
   bad <- setdiff(types, supported_models)
   if (length(bad) > 0) {
-    unbounded <- intersect(bad, c("Lin", "Pow", "Log"))
-    why <- if (length(unbounded) > 0) {
+    # gstat's Lin with a positive range is bounded (sill at the range), but
+    # its covariance, the triangular function, is positive definite only in
+    # one dimension; with range 0 it is unbounded.
+    lin_bounded <- types == "Lin" & model$range > 0
+    unbounded <- intersect(types[!lin_bounded], c("Lin", "Pow", "Log"))
+    why <- if (any(lin_bounded)) {
+      paste0(
+        "The bounded linear model (Lin with a positive range) does not ",
+        "give a valid covariance in two dimensions: its covariance ",
+        "function, the triangular function, is positive definite only in ",
+        "one dimension."
+      )
+    } else if (length(unbounded) > 0) {
       paste0(
         "Unbounded variogram model(s) ", paste(unbounded, collapse = ", "),
         " have no covariance function C(h) = sill - gamma(h), which the ",

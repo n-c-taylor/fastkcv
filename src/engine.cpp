@@ -56,12 +56,31 @@ Rcpp::List fail_buffer(int status, arma::uword i, arma::uword m) {
                             Rcpp::Named("size") = int(m));
 }
 
+// Triangular systems must not fall back silently. Below rcond eps,
+// Armadillo's solve() without solve_opts::no_approx prints a warning to the
+// R console (not an R condition, so R's handlers cannot catch it) and
+// returns an approximate (SVD) solution. Every triangular solve therefore
+// uses the bool form with no_approx, which returns false instead. It takes
+// the same LAPACK path (dtrtrs with dtrcon), so a successful solve gives the
+// same result as before, and the caller maps a failure to a status code.
+bool solve_tri(arma::mat& X, const arma::mat& A, const arma::mat& B,
+               bool upper) {
+  return upper ? arma::solve(X, arma::trimatu(A), B, arma::solve_opts::no_approx)
+               : arma::solve(X, arma::trimatl(A), B, arma::solve_opts::no_approx);
+}
+
 // Inverse of a small symmetric positive definite matrix through its
-// Cholesky factor; false if the factorization fails.
+// Cholesky factor; false if the factorization fails or the factor has
+// rcond below eps (inv() with an rcond output: dtrtri, as plain inv(), plus
+// dtrcon).
 bool fold_inverse(const arma::mat& Qii, arma::mat& V) {
   arma::mat Rq;
   if (!arma::chol(Rq, arma::symmatu(Qii))) return false;
-  arma::mat Ri = arma::inv(arma::trimatu(Rq));
+  arma::mat Ri;
+  double rc = 0.0;
+  if (!arma::inv(Ri, rc, arma::trimatu(Rq)) || !(rc >= DBL_EPSILON)) {
+    return false;
+  }
   V = Ri * Ri.t();
   return true;
 }
@@ -92,13 +111,16 @@ bool identifiable(const arma::mat& U, const arma::uvec& idx) {
 }
 
 // Q y for ordinary/universal kriging, Q (y - F beta) for simple kriging,
-// with C^{-1} = Wt' Wt. `Beta` is p x 1 (shared by every column of Y) or
+// with C^{-1} = Wt' Wt. `ok` is false if the solve with S fails (rcond(S) <
+// eps, which the prepare stage already rejects; a backstop for modified
+// prepared objects). `Beta` is p x 1 (shared by every column of Y) or
 // p x T (column t for response t); F * Beta.col(t) is a gemv per column, as
 // for a single response.
 arma::mat compute_Qy(const arma::mat& Wt, const arma::mat& B,
                      const arma::mat& S, const arma::mat& G,
                      const arma::mat& F, const arma::mat& Y, bool simple,
-                     const arma::mat& Beta) {
+                     const arma::mat& Beta, bool& ok) {
+  ok = true;
   if (simple) {
     arma::mat Yt = Y;
     if (Beta.n_cols == 1) {
@@ -111,7 +133,10 @@ arma::mat compute_Qy(const arma::mat& Wt, const arma::mat& B,
     return Wt.t() * (Wt * Yt);
   }
   arma::mat Z = Wt * Y;
-  return Wt.t() * Z - G.t() * arma::solve(arma::trimatl(S.t()), B.t() * Z);
+  arma::mat X;
+  ok = solve_tri(X, S.t(), B.t() * Z, false);
+  if (!ok) return X;
+  return Wt.t() * Z - G.t() * X;
 }
 
 // Columns `idx` (sorted) of the lower triangular Wt, rows c..n-1 only: with
@@ -164,14 +189,16 @@ double q_entry(const arma::mat& Wt, const arma::mat& G, arma::uword j,
 
 // Solves Q[I, I] x = e_pos through the Cholesky factor of Q[I, I], giving
 // the row of Q[I, I]^{-1} for the scored point; false if the factorization
-// fails.
+// fails or either triangular solve has rcond below eps.
 bool solve_unit(const arma::mat& Qii, arma::uword pos, arma::vec& x) {
   arma::mat Rq;
   if (!arma::chol(Rq, arma::symmatu(Qii))) return false;
-  arma::vec e(Qii.n_rows, arma::fill::zeros);
+  arma::mat e(Qii.n_rows, 1, arma::fill::zeros);
   e[pos] = 1.0;
-  arma::vec z = arma::solve(arma::trimatl(Rq.t()), e);
-  x = arma::solve(arma::trimatu(Rq), z);
+  arma::mat z, xm;
+  if (!solve_tri(z, Rq.t(), e, false)) return false;
+  if (!solve_tri(xm, Rq, z, true)) return false;
+  x = arma::vectorise(xm);
   return true;
 }
 
@@ -230,7 +257,7 @@ Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
     // rcond of S' (1-norm), the matrix that solve() below works with.
     const double rc = arma::rcond(arma::mat(S.t()));
     if (!(rc >= DBL_EPSILON)) return fail(2, 0);
-    G = arma::solve(arma::trimatl(S.t()), (Wt.t() * B).t());
+    if (!solve_tri(G, S.t(), (Wt.t() * B).t(), false)) return fail(2, 0);
     qdiag -= arma::sum(arma::square(G), 0).t();
   }
   return Rcpp::List::create(
@@ -351,7 +378,9 @@ Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
     const int nf = fold_idx.size();
     const arma::mat Wt(const_cast<double*>(Wr.begin()), n, n, false, true);
 
-    const arma::mat Qy = compute_Qy(Wt, B, S, G, F, Y, simple, beta);
+    bool qy_ok;
+    const arma::mat Qy = compute_Qy(Wt, B, S, G, F, Y, simple, beta, qy_ok);
+    if (!qy_ok) return fail(2, 0);
 
     arma::mat pred(n, T);
     arma::vec var(n);
@@ -556,7 +585,9 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
         }
       }
     }
-    const arma::mat Qy = compute_Qy(Wt, B, S, G, F, Y, simple, beta);
+    bool qy_ok;
+    const arma::mat Qy = compute_Qy(Wt, B, S, G, F, Y, simple, beta, qy_ok);
+    if (!qy_ok) return fail(2, 0);
     arma::mat pred(nt, T);
     arma::vec var(nt);
     arma::ivec size(nt);

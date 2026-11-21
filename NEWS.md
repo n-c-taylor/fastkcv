@@ -7,7 +7,8 @@ First release.
   covariance matrix. Same inputs (`formula`, `locations`, `data`, `model`,
   `nfold`, `beta`) and output as `gstat::krige.cv()`, for data.frame, `sf`
   and `sp` data; variogram models `Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste`,
-  nested sums and 2D geometric anisotropy.
+  `Cir`, `Pen`, `Bes`, `Wav`, `Hol`, nested sums and 2D geometric
+  anisotropy.
 * `kcv_prepare()` and `kcv_run()`: factorize once, cross-validate any number
   of fold schemes.
 * Buffered leave-one-out (`buffer`), optionally for a subset of `targets`.

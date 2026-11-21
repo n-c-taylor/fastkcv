@@ -20,8 +20,9 @@
 #'   holding both the locations and the variables (then `data` is not used).
 #' @param data A data.frame, when `locations` is a formula.
 #' @param model A `gstat` variogram model ([gstat::vgm()]) with fixed
-#'   parameters. Supported: `Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste` and nested
-#'   sums of them, with optional 2D geometric anisotropy.
+#'   parameters. Supported: `Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste`, `Cir`,
+#'   `Pen`, `Bes`, `Wav`, `Hol` and nested sums of them, with optional 2D
+#'   geometric anisotropy.
 #' @param nfold As in [gstat::krige.cv()]: missing or `nrow(data)` for
 #'   leave-one-out; a single integer `k < n` for random k-fold assignment
 #'   (drawn exactly as `krige.cv()` does, so the same seed gives the same
@@ -141,11 +142,18 @@
 #'
 #' Multithreaded BLAS libraries use all cores by default; when running
 #' several R processes in parallel, limit the threads (for OpenBLAS, the
-#' environment variable `OPENBLAS_NUM_THREADS`).
+#' environment variable `OPENBLAS_NUM_THREADS`). OpenBLAS starts one thread
+#' per logical CPU, and on CPUs with simultaneous multithreading
+#' (hyper-threading) one thread per physical core can be much faster: on a
+#' 4-core, 8-thread laptop, `OPENBLAS_NUM_THREADS=4` made 10-fold `kcv()`
+#' 1.6 to 2 times faster than the default at n = 1,500 to 5,000.
 #'
 #' The factorization depends only on the locations, the model and the trend,
 #' not on the folds. To cross-validate several fold schemes for the same
-#' data, call [kcv_prepare()] once and [kcv_run()] for each scheme.
+#' data, call [kcv_prepare()] once and [kcv_run()] for each scheme. Each
+#' fold of size \eqn{m} adds about \eqn{m^2 n} operations, so a few large
+#' folds cost the most: with 2 folds, the folds take about as long as the
+#' factorization.
 #'
 #' See [kcv_engine()] for memory requirements.
 #' @export
@@ -345,7 +353,10 @@ kcv_inputs <- function(formula, locations, data, model, beta, ...) {
   validate_model(model)
   inp <- parse_inputs(formula, locations, if (missing(data)) NULL else data)
   check_beta(beta, inp$F, ncol(inp$y))
-  if (is.null(beta)) check_trend_rank(inp$F)
+  if (is.null(beta)) {
+    trend_vars <- all.vars(stats::delete.response(stats::terms(formula)))
+    check_trend_rank(inp$F, any(trend_vars %in% inp$coord_names))
+  }
   list(inp = inp, model = model)
 }
 
