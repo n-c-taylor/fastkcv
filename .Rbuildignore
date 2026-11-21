@@ -7,3 +7,5 @@
 ^doc$
 ^Meta$
 ^man/figures/social-preview\.png$
+^.*\.Rproj$
+^\.Rproj\.user$

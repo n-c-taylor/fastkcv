@@ -2,8 +2,8 @@
 # Stress & Scaling Comparison: fastkcv::kcv vs. gstat::krige.cv
 # Covers:
 #   0. Environment & BLAS/LAPACK metadata
-#   1. Variogram families, ill-conditioning, UTM-scale UK, duplicates, SK, sf,
-#      unequal/unsorted/character folds, and rank-deficient fold edge cases
+#   1. Variogram families, ill-conditioning, UTM-scale UK (raw & scaled),
+#      duplicates, SK, sf, unequal/unsorted/character folds, rank-deficient folds
 #   2. Fold-count sweep at fixed n (K = 2 .. n)
 #   3. Sample-size scaling (10-fold UK CV) vs. global & local (nmax = 50) gstat
 #   4. Isolated subprocess peak RSS measurement (C-level + R-heap memory)
@@ -18,11 +18,13 @@ library(bench)
 # PART 0: Environment & Linear Algebra Metadata
 # ==============================================================================
 
+fmt_lib <- function(x) if (length(x) == 1 && nzchar(x)) x else "<bundled/default>"
+
 cat("=== Environment & BLAS/LAPACK Metadata ===\n")
 cat("R version:   ", R.version.string, "\n")
 cat("Platform:    ", R.version$platform, "\n")
-cat("BLAS:        ", sessionInfo()$BLAS, "\n")
-cat("LAPACK:      ", La_library(), "\n")
+cat("BLAS:        ", fmt_lib(sessionInfo()$BLAS), "\n")
+cat("LAPACK:      ", fmt_lib(La_library()), "\n")
 cat("fastkcv:     ", as.character(packageVersion("fastkcv")), "\n")
 cat("gstat:       ", as.character(packageVersion("gstat")), "\n")
 thread_vars <- Sys.getenv(
@@ -75,6 +77,11 @@ extract_cv <- function(x) {
 
 safe_max <- function(x) {
   if (length(x) == 0 || all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+}
+
+expr_labels <- function(x) {
+  nms <- names(x)
+  if (!is.null(nms) && all(nzchar(nms))) nms else as.character(x)
 }
 
 run_comparison <- function(label, expr_g, expr_f, tol_pred = 1e-10, tol_var = 1e-10, core = TRUE) {
@@ -156,6 +163,8 @@ dat_base <- make_spatial_data(n = 150, seed = 42)
 dat_close <- make_spatial_data(n = 150, seed = 43, add_close_pair = TRUE)
 dat_dup <- make_spatial_data(n = 150, seed = 44, add_duplicate = TRUE)
 dat_utm <- make_spatial_data(n = 150, seed = 45, origin = c(500000, 4500000), scale = 1e5)
+dat_utm$xs <- as.numeric(scale(coordinates(dat_utm)[, 1]))
+dat_utm$ys <- as.numeric(scale(coordinates(dat_utm)[, 2]))
 
 v_exp <- vgm(psill = 1.0, model = "Exp", range = 0.3, nugget = 0.1)
 v_mat <- vgm(psill = 1.0, model = "Mat", range = 0.3, nugget = 0.1, kappa = 1.5)
@@ -169,6 +178,7 @@ v_anis <- vgm(psill = 1.0, model = "Exp", range = 0.3, nugget = 0.1, anis = c(45
 v_utm <- vgm(psill = 1.0, model = "Exp", range = 30000, nugget = 0.1)
 
 uk_quad <- z ~ x + y + I(x^2) + I(y^2) + I(x * y)
+uk_quad_std <- z ~ xs + ys + I(xs^2) + I(ys^2) + I(xs * ys)
 
 # Unequal spatial block folds + non-contiguous & character fold labels
 set.seed(42)
@@ -198,21 +208,28 @@ rows <- list(
     fastkcv::kcv(z ~ 1, dat_base, model = v_zero, nfold = nrow(dat_base))
   ),
   # Ill-conditioned Gaussian variogram + close point pair
-  run_comparison("OK LOO: Gau (nug=1e-6, close pair)",
+  run_comparison(
+    "OK LOO: Gau (nug=1e-6, close pair)",
     krige.cv(z ~ 1, dat_close, model = v_gau_ill, nfold = nrow(dat_close), verbose = FALSE),
     fastkcv::kcv(z ~ 1, dat_close, model = v_gau_ill, nfold = nrow(dat_close)),
     tol_pred = 1e-6, tol_var = 1e-6
   ),
-  # Quadratic UK & realistic UTM coordinate magnitudes
+  # Quadratic UK & realistic UTM coordinate magnitudes (raw diagnostic vs. scaled core)
   run_comparison(
     "UK Quadratic LOO (unit square)",
     krige.cv(uk_quad, dat_base, model = v_exp, nfold = nrow(dat_base), verbose = FALSE),
     fastkcv::kcv(uk_quad, dat_base, model = v_exp, nfold = nrow(dat_base))
   ),
-  run_comparison("UK Quadratic LOO (UTM 1e5-1e6 m)",
+  run_comparison(
+    "UK Quadratic LOO (UTM raw, unscaled)",
     krige.cv(uk_quad, dat_utm, model = v_utm, nfold = nrow(dat_utm), verbose = FALSE),
     fastkcv::kcv(uk_quad, dat_utm, model = v_utm, nfold = nrow(dat_utm)),
-    tol_pred = 1e-6, tol_var = 1e-6
+    tol_pred = 1e-6, tol_var = 1e-6, core = FALSE
+  ),
+  run_comparison(
+    "UK Quadratic LOO (UTM centered/scaled)",
+    krige.cv(uk_quad_std, dat_utm, model = v_utm, nfold = nrow(dat_utm), verbose = FALSE),
+    fastkcv::kcv(uk_quad_std, dat_utm, model = v_utm, nfold = nrow(dat_utm))
   ),
   # Spatial block folds & fold-label handling
   run_comparison(
@@ -220,38 +237,45 @@ rows <- list(
     krige.cv(uk_quad, dat_base, model = v_exp, nfold = blk_int, verbose = FALSE),
     fastkcv::kcv(uk_quad, dat_base, model = v_exp, folds = blk_int)
   ),
-  run_comparison("UK Quad Block-5 (non-seq int IDs)",
+  run_comparison(
+    "UK Quad Block-5 (non-seq int IDs)",
     krige.cv(uk_quad, dat_base, model = v_exp, nfold = blk_nonseq, verbose = FALSE),
     fastkcv::kcv(uk_quad, dat_base, model = v_exp, folds = blk_nonseq),
     core = FALSE
   ),
-  run_comparison("UK Quad Block-5 (character IDs)",
+  run_comparison(
+    "UK Quad Block-5 (character IDs)",
     krige.cv(uk_quad, dat_base, model = v_exp, nfold = blk_char, verbose = FALSE),
     fastkcv::kcv(uk_quad, dat_base, model = v_exp, folds = blk_char),
     core = FALSE
   ),
   # Extended geostatistical features & edge cases (non-core: test support cleanly)
-  run_comparison("OK LOO: Duplicate coordinates",
+  run_comparison(
+    "OK LOO: Duplicate coordinates",
     krige.cv(z ~ 1, dat_dup, model = v_exp, nfold = nrow(dat_dup), verbose = FALSE),
     fastkcv::kcv(z ~ 1, dat_dup, model = v_exp, nfold = nrow(dat_dup)),
     core = FALSE
   ),
-  run_comparison("OK LOO: Nested vgm (Exp + Sph)",
+  run_comparison(
+    "OK LOO: Nested vgm (Exp + Sph)",
     krige.cv(z ~ 1, dat_base, model = v_nested, nfold = nrow(dat_base), verbose = FALSE),
     fastkcv::kcv(z ~ 1, dat_base, model = v_nested, nfold = nrow(dat_base)),
     core = FALSE
   ),
-  run_comparison("OK LOO: Anisotropic vgm (45, 0.5)",
+  run_comparison(
+    "OK LOO: Anisotropic vgm (45, 0.5)",
     krige.cv(z ~ 1, dat_base, model = v_anis, nfold = nrow(dat_base), verbose = FALSE),
     fastkcv::kcv(z ~ 1, dat_base, model = v_anis, nfold = nrow(dat_base)),
     core = FALSE
   ),
-  run_comparison("Simple Kriging LOO (known beta)",
+  run_comparison(
+    "Simple Kriging LOO (known beta)",
     krige.cv(z ~ 1, dat_base, model = v_exp, beta = 2.0, nfold = nrow(dat_base), verbose = FALSE),
     fastkcv::kcv(z ~ 1, dat_base, model = v_exp, beta = 2.0, nfold = nrow(dat_base)),
     core = FALSE
   ),
-  run_comparison("UK Linear: Rank-deficient fold",
+  run_comparison(
+    "UK Linear: Rank-deficient fold",
     krige.cv(z ~ x + y, dat_small, model = v_exp, nfold = folds_degen, verbose = FALSE),
     fastkcv::kcv(z ~ x + y, dat_small, model = v_exp, folds = folds_degen),
     core = FALSE
@@ -328,14 +352,17 @@ sweep_tbl <- bm_fold_sweep[, c("expression", "k", "min", "median", "itr/sec", "m
 print(sweep_tbl)
 
 # Speedup summary table
-med_g <- as.numeric(bm_fold_sweep$median[as.character(bm_fold_sweep$expression) == "gstat"])
-med_f <- as.numeric(bm_fold_sweep$median[as.character(bm_fold_sweep$expression) == "fastkcv"])
+lbl_sweep <- expr_labels(bm_fold_sweep$expression)
+g_sw <- bm_fold_sweep[lbl_sweep == "gstat", ]
+f_sw <- bm_fold_sweep[lbl_sweep == "fastkcv", ]
+idx_sw <- match(g_sw$k, f_sw$k)
+
 cat("\nFold-Sweep Speedup (gstat / fastkcv):\n")
 print(data.frame(
-  k = unique(bm_fold_sweep$k),
-  gstat_ms = round(med_g * 1e3, 2),
-  fastkcv_ms = round(med_f * 1e3, 2),
-  speedup = round(med_g / med_f, 2)
+  k = g_sw$k,
+  gstat_ms = round(as.numeric(g_sw$median) * 1e3, 2),
+  fastkcv_ms = round(as.numeric(f_sw$median[idx_sw]) * 1e3, 2),
+  speedup = round(as.numeric(g_sw$median) / as.numeric(f_sw$median[idx_sw]), 2)
 ), row.names = FALSE)
 
 # ==============================================================================
@@ -364,6 +391,23 @@ bm_scale <- bench::press(
   }
 )
 print(bm_scale[, c("expression", "n", "min", "median", "itr/sec", "mem_alloc", "n_itr")])
+
+lbl_scale <- expr_labels(bm_scale$expression)
+sg <- bm_scale[lbl_scale == "gstat_global", ]
+sl <- bm_scale[lbl_scale == "gstat_local", ]
+sf <- bm_scale[lbl_scale == "fastkcv", ]
+idx_l <- match(sg$n, sl$n)
+idx_f <- match(sg$n, sf$n)
+
+cat("\nSample-Size Scaling Speedup (10-Fold UK CV):\n")
+print(data.frame(
+  n = sg$n,
+  gstat_global_ms = round(as.numeric(sg$median) * 1e3, 2),
+  gstat_local_ms = round(as.numeric(sl$median[idx_l]) * 1e3, 2),
+  fastkcv_ms = round(as.numeric(sf$median[idx_f]) * 1e3, 2),
+  vs_global_x = round(as.numeric(sg$median) / as.numeric(sf$median[idx_f]), 2),
+  vs_local_x = round(as.numeric(sl$median[idx_l]) / as.numeric(sf$median[idx_f]), 2)
+), row.names = FALSE)
 
 # Numerical verification + global-vs-local accuracy check at largest n
 n_max <- max(n_grid)
@@ -396,6 +440,7 @@ stopifnot(chk_max$status == "PASS")
 # ==============================================================================
 # PART 4: Isolated Subprocess Peak Process Memory (RSS)
 # Captures C-level allocations invisible to bench::mark()$mem_alloc
+# Pre-generates inputs in parent so data setup does not inflate subprocess HWM
 # ==============================================================================
 
 cat("\n=== PART 4: Isolated Subprocess Memory (Peak / Post-Call RSS) ===\n")
@@ -403,9 +448,21 @@ cat("\n=== PART 4: Isolated Subprocess Memory (Peak / Post-Call RSS) ===\n")
 if (!requireNamespace("callr", quietly = TRUE)) {
   cat("Skipped: install 'callr' (and optionally 'ps' on macOS/Windows) for subprocess RSS measurement.\n")
 } else {
+  rss_ns <- c(750, 1500)
+  rss_inputs <- setNames(lapply(rss_ns, function(n) {
+    dat <- make_spatial_data(n, seed = 500 + n)
+    set.seed(42)
+    list(
+      dat = dat,
+      v_mod = vgm(psill = 1.0, model = "Exp", range = 0.3, nugget = 0.1),
+      f_k = sample(rep(seq_len(10), length.out = n))
+    )
+  }), as.character(rss_ns))
+
   measure_subprocess_rss <- function(method, n) {
+    inp <- rss_inputs[[as.character(n)]]
     callr::r(
-      function(method, n) {
+      function(method, n, dat, v_mod, f_k) {
         suppressPackageStartupMessages({
           library(fastkcv)
           library(gstat)
@@ -431,22 +488,7 @@ if (!requireNamespace("callr", quietly = TRUE)) {
           list(metric = "NA", value = NA_real_)
         }
 
-        set.seed(500 + n)
-        coords <- cbind(x = runif(n, 0, 1), y = runif(n, 0, 1))
-        d_mat <- as.matrix(dist(coords))
-        cov_mat <- 1.0 * exp(-d_mat / 0.3) + diag(0.1, n)
-        eps <- as.numeric(t(chol(cov_mat)) %*% rnorm(n))
-        dat <- data.frame(
-          x = coords[, "x"], y = coords[, "y"],
-          z = 2 + 1.5 * coords[, "x"] - 0.8 * coords[, "y"] + eps
-        )
-        coordinates(dat) <- ~ x + y
-        v_mod <- vgm(psill = 1.0, model = "Exp", range = 0.3, nugget = 0.1)
-        set.seed(42)
-        f_k <- sample(rep(seq_len(10), length.out = n))
-        rm(coords, d_mat, cov_mat, eps)
         gc(FALSE)
-
         before <- get_rss_mb()
         t0 <- proc.time()[["elapsed"]]
         if (method == "gstat_global") {
@@ -470,13 +512,13 @@ if (!requireNamespace("callr", quietly = TRUE)) {
           stringsAsFactors = FALSE
         )
       },
-      args = list(method = method, n = n)
+      args = list(method = method, n = n, dat = inp$dat, v_mod = inp$v_mod, f_k = inp$f_k)
     )
   }
 
   rss_grid <- expand.grid(
     method = c("gstat_global", "gstat_local", "fastkcv"),
-    n = c(750, 1500),
+    n = rss_ns,
     stringsAsFactors = FALSE
   )
   rss_results <- do.call(rbind, Map(measure_subprocess_rss, rss_grid$method, rss_grid$n))
