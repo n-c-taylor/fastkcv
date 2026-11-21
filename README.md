@@ -28,9 +28,16 @@ numerical precision.
 
 ## Installation
 
+Using `remotes`:
 ```r
 # install.packages("remotes")
 remotes::install_github("n-c-taylor/fastkcv", build_vignettes = TRUE)
+```
+
+Using `pak` (faster):
+```r
+# install.packages("pak")
+pak::pkg_install("n-c-taylor/fastkcv")
 ```
 
 The package contains C++ code, so installing from GitHub needs a compiler
