@@ -345,6 +345,7 @@ kcv_inputs <- function(formula, locations, data, model, beta, ...) {
   validate_model(model)
   inp <- parse_inputs(formula, locations, if (missing(data)) NULL else data)
   check_beta(beta, inp$F, ncol(inp$y))
+  if (is.null(beta)) check_trend_rank(inp$F)
   list(inp = inp, model = model)
 }
 

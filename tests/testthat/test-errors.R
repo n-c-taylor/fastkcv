@@ -123,6 +123,28 @@ test_that("engine errors are informative", {
   expect_equal(fold_inverse(matrix(4), 1), matrix(0.25))
 })
 
+test_that("rank-deficient trends are rejected on every BLAS", {
+  # The C++ Cholesky of F'C^-1 F caught cbind(1, 1) only when the BLAS
+  # rounded the two equal columns of Wt F identically: under MKL and ATLAS
+  # (R-hub) it succeeded. The QR rank check does not depend on the BLAS.
+  xy <- cbind(c(0, 1, 2, 4), c(0, 0, 1, 3))
+  C <- covariance_matrix(gstat::vgm(1, "Exp", 1), xy)
+  near <- cbind(1, 1 + 1e-12 * c(1, -1, 0.5, 2))
+  expect_error(kcv_engine_prepare(C, near), "rank deficient")
+  expect_error(kcv_engine(C, near, 1:4, 1:4), "rank deficient")
+  meuse <- meuse_df()
+  expect_error(
+    kcv(log(zinc) ~ dist + I(2 * dist), ~ x + y, meuse, model = m_ok),
+    "rank deficient"
+  )
+  expect_error(
+    kcv_prepare(log(zinc) ~ dist + I(2 * dist), ~ x + y, meuse, model = m_ok),
+    "rank deficient"
+  )
+  # Simple kriging uses F only through F beta, so its rank does not matter.
+  expect_no_error(kcv_engine_prepare(C, near, beta = c(1, 0)))
+})
+
 test_that("C++ engine raises the R engine's fold errors", {
   s_xy <- withr::with_seed(5, matrix(stats::runif(40, 0, 100), ncol = 2))
   C <- covariance_matrix(gstat::vgm(1, "Exp", 30, 0.1), s_xy)

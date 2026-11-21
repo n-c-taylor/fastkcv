@@ -84,6 +84,7 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
     )
   }
   check_beta(beta, F)
+  if (is.null(beta)) check_trend_rank(F)
   check_memory(n, matrices = 2)
   # Assigning a storage mode copies C even when it is already double, which
   # would add a third n x n matrix to the peak.
@@ -404,6 +405,19 @@ check_trend <- function(F) {
       "ordinary kriging, or a known mean with `beta`.",
       call. = FALSE
     )
+  }
+  invisible(TRUE)
+}
+
+# OK/UK need a full-rank trend matrix. Checked with a pivoted QR (R's
+# default tolerance 1e-7, as in check_fold_identifiable()) before the
+# factorization. Whether the Cholesky of B'B = F'C^-1 F in C++ fails for a
+# rank-deficient F depends on the BLAS's rounding of B = Wt F: OpenBLAS and
+# the reference BLAS give equal columns of F identical columns of B, so B'B
+# is exactly singular, but MKL and ATLAS do not, and accepted F = cbind(1, 1).
+check_trend_rank <- function(F) {
+  if (qr(F)$rank < ncol(F)) {
+    err_rank_deficient()
   }
   invisible(TRUE)
 }
