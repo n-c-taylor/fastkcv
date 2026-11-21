@@ -27,3 +27,6 @@ First release.
   prediction-interval coverage, overall or per fold.
 * Memory requirements are checked up front against
   `getOption("fastkcv.max_gb")`.
+* Ordinary and universal kriging estimate the trend in an orthonormal basis
+  of the trend matrix, so trends in large raw coordinates (such as a
+  quadratic trend in UTM meters) stay accurate.

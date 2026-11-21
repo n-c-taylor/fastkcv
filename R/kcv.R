@@ -356,11 +356,12 @@ kcv_factor <- function(inp, model, beta) {
   check_memory(n, matrices = 1)
   F <- inp$F
   storage.mode(F) <- "double"
+  U <- trend_basis(F, beta)
   res <- do.call(prepare_model_cpp, c(
     list(inp$coords), model_cpp_args(model),
-    list(F = F, simple = !is.null(beta))
+    list(F = if (is.null(beta)) U else F, simple = !is.null(beta))
   ))
-  new_prepared(res, F, beta, inp = inp, matrices = 1)
+  new_prepared(res, F, U, beta, inp = inp, matrices = 1)
 }
 
 # Fold vector from kcv()'s `nfold` / `folds` arguments.

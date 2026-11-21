@@ -90,8 +90,9 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
   # would add a third n x n matrix to the peak.
   if (!is.double(C)) storage.mode(C) <- "double"
   storage.mode(F) <- "double"
-  res <- prepare_matrix_cpp(C, F, !is.null(beta))
-  new_prepared(res, F, beta, inp = NULL, matrices = 2)
+  U <- trend_basis(F, beta)
+  res <- prepare_matrix_cpp(C, if (is.null(beta)) U else F, !is.null(beta))
+  new_prepared(res, F, U, beta, inp = NULL, matrices = 2)
 }
 
 #' @rdname kcv_engine
@@ -145,16 +146,28 @@ print.kcv_prepared <- function(x, ...) {
   invisible(x)
 }
 
-# Wraps the C++ factorization into a kcv_prepared object.
-new_prepared <- function(res, F, beta, inp, matrices) {
+# Orthonormal basis U of the column space of F for ordinary/universal
+# kriging (empty for simple kriging). Q depends on F only through its column
+# space, so the factorization uses U in place of F: F'C^-1 F can be
+# numerically singular for a full-rank F whose columns differ in scale by
+# many orders of magnitude (a quadratic trend in UTM coordinates: F'C^-1 F
+# had rcond 1e-35), while cond(U'C^-1 U) <= cond(C). U also serves the
+# per-fold identifiability checks.
+trend_basis <- function(F, beta) {
+  if (is.null(beta)) qr.Q(qr(F)) else matrix(0, 0, 0)
+}
+
+# Wraps the C++ factorization into a kcv_prepared object. `F` is kept as
+# given (simple kriging uses F beta, in the parametrization of `beta`); B, S
+# and G of ordinary/universal kriging are in the basis `U`.
+new_prepared <- function(res, F, U, beta, inp, matrices) {
   if (res$status != 0) {
     raise_status(res$status, NA, nrow(F), matrices)
   }
   simple <- !is.null(beta)
   structure(
     list(
-      Wt = res$Wt, B = res$B, S = res$S, G = res$G,
-      U = if (simple) matrix(0, 0, 0) else qr.Q(qr(F)),
+      Wt = res$Wt, B = res$B, S = res$S, G = res$G, U = U,
       qdiag = res$qdiag, F = F,
       beta = if (simple) store_beta(beta) else NULL,
       inp = inp
@@ -335,7 +348,7 @@ run_prepared <- function(p, y, folds) {
 raise_status <- function(status, f, n, matrices) {
   switch(status,
     err_not_pd(),
-    err_rank_deficient(),
+    err_trend_singular(),
     err_every_obs(f),
     err_unidentifiable(f),
     err_singular(f),
@@ -411,10 +424,10 @@ check_trend <- function(F) {
 
 # OK/UK need a full-rank trend matrix. Checked with a pivoted QR (R's
 # default tolerance 1e-7, as in check_fold_identifiable()) before the
-# factorization. Whether the Cholesky of B'B = F'C^-1 F in C++ fails for a
-# rank-deficient F depends on the BLAS's rounding of B = Wt F: OpenBLAS and
-# the reference BLAS give equal columns of F identical columns of B, so B'B
-# is exactly singular, but MKL and ATLAS do not, and accepted F = cbind(1, 1).
+# factorization. The C++ check of F'C^-1 F (status 2) cannot replace it:
+# with F itself, whether its Cholesky failed for a rank-deficient F depended
+# on the BLAS's rounding of Wt F (MKL and ATLAS accepted F = cbind(1, 1)),
+# and it now sees only the orthonormal basis of trend_basis().
 check_trend_rank <- function(F) {
   if (qr(F)$rank < ncol(F)) {
     err_rank_deficient()
@@ -666,6 +679,20 @@ err_not_pd <- function() {
 
 err_rank_deficient <- function() {
   stop("The trend matrix F is rank deficient.", call. = FALSE)
+}
+
+# C++ status 2: the Cholesky factor of U'C^-1 U (U an orthonormal basis of
+# the trend) failed or has reciprocal condition number below machine
+# precision. Since cond(U'C^-1 U) <= cond(C), this means C is too
+# ill-conditioned, not that the trend is badly scaled.
+err_trend_singular <- function() {
+  stop(
+    "The generalized least squares matrix F'C^-1 F of the trend is ",
+    "numerically singular, so the trend cannot be estimated: the ",
+    "covariance matrix is too ill-conditioned. Consider adding a nugget or ",
+    "using a simpler trend.",
+    call. = FALSE
+  )
 }
 
 err_every_obs <- function(f, label = NULL) {

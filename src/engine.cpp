@@ -5,6 +5,8 @@
 // ordinary/universal kriging, B = W'F = Wt F, A = F'C^{-1}F = B'B = S'S and
 // G = S^{-T} (C^{-1}F)', so that
 //   Q = C^{-1} - C^{-1}F A^{-1} F'C^{-1} = Wt' Wt - G'G.
+// Q depends on F only through its column space, and the R side passes an
+// orthonormal basis of it (the raw F only for simple kriging, as F beta).
 // Only the diagonal blocks Q[I, I] = Wt[, I]' Wt[, I] - G[, I]' G[, I] are
 // formed, never the full n x n matrix Q. Storing Wt rather than W makes the
 // columns Wt[, I] contiguous in memory. For simple kriging B, S and G are
@@ -22,7 +24,7 @@
 // fold) so that the R wrapper raises exactly the same conditions as the R
 // engine:
 //   1 C not positive definite        4 fold leaves the trend unidentifiable
-//   2 trend matrix rank deficient    5 Q[I, I] numerically singular
+//   2 F'C^{-1}F numerically singular 5 Q[I, I] numerically singular
 //   3 fold contains every observation 6 out of memory
 //   7 C not symmetric                 8 C has a non-finite entry
 
@@ -218,8 +220,16 @@ Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
 
   arma::mat B, S, G;
   if (!simple) {
+    // F is an orthonormal basis of the trend here (trend_basis() in R), so
+    // cond(B'B) <= cond(C). Below rcond eps, Armadillo's triangular solve()
+    // with S would print a warning and switch to an approximate (SVD)
+    // solution; a raw quadratic trend in UTM coordinates had rcond(S) =
+    // 3e-18 and predictions off by 0.2. Refuse instead.
     B = Wt * F;
     if (!arma::chol(S, arma::symmatu(B.t() * B))) return fail(2, 0);
+    // rcond of S' (1-norm), the matrix that solve() below works with.
+    const double rc = arma::rcond(arma::mat(S.t()));
+    if (!(rc >= DBL_EPSILON)) return fail(2, 0);
     G = arma::solve(arma::trimatl(S.t()), (Wt.t() * B).t());
     qdiag -= arma::sum(arma::square(G), 0).t();
   }
