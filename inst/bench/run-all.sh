@@ -11,6 +11,7 @@ LIB=/usr/lib/x86_64-linux-gnu
 OPENBLAS=$LIB/openblas-pthread:/usr/lib/R/lib:$LIB
 REFBLAS=$LIB/blas:$LIB/lapack:/usr/lib/R/lib:$LIB
 
+mkdir -p inst/bench/cache
 rm -f src/*.o src/*.so
 R CMD INSTALL --preclean . > inst/bench/cache/install.log 2>&1 || exit 1
 steps="$*"

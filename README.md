@@ -30,8 +30,11 @@ numerical precision.
 
 ```r
 # install.packages("remotes")
-remotes::install_github("n-c-taylor/fastkcv")
+remotes::install_github("n-c-taylor/fastkcv", build_vignettes = TRUE)
 ```
+
+The package contains C++ code, so installing from GitHub needs a compiler
+toolchain: Rtools on Windows, the Xcode command line tools on macOS.
 
 ## Example
 
