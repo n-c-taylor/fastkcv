@@ -304,6 +304,41 @@ if (nrow(err_notes) > 0) {
   print(err_notes, row.names = FALSE)
 }
 
+# The raw-UTM row above compares fastkcv with gstat only, and gstat is the
+# less accurate side there. Truth: the same fit with the coordinates centered
+# and divided by 1e5 (range 30000 -> 0.3), where the trend is well
+# conditioned (gstat and fastkcv agree to ~1e-14); a full quadratic trend and
+# the kriging predictions are invariant under this change of coordinates.
+utm_df <- as.data.frame(dat_utm)[, c("x", "y", "z")]
+utm_c <- utm_df
+utm_c$x <- (utm_c$x - mean(utm_c$x)) / 1e5
+utm_c$y <- (utm_c$y - mean(utm_c$y)) / 1e5
+coordinates(utm_c) <- ~ x + y
+truth_utm <- extract_cv(krige.cv(uk_quad, utm_c,
+  model = vgm(psill = 1.0, model = "Exp", range = 0.3, nugget = 0.1),
+  nfold = nrow(utm_c), verbose = FALSE
+))
+raw_utm <- list(
+  gstat = tryCatch(
+    extract_cv(krige.cv(uk_quad, dat_utm, model = v_utm, nfold = nrow(dat_utm), verbose = FALSE)),
+    error = function(e) NULL
+  ),
+  fastkcv = tryCatch(
+    extract_cv(fastkcv::kcv(uk_quad, dat_utm, model = v_utm, nfold = nrow(dat_utm))),
+    error = function(e) NULL
+  )
+)
+cat("\nUK Quadratic LOO (UTM raw) vs. truth (centered coordinates / 1e5):\n")
+print(data.frame(
+  solver = names(raw_utm),
+  max_abs_pred_vs_truth = vapply(raw_utm, function(r) {
+    if (is.null(r)) NA_real_ else max(abs(r$pred - truth_utm$pred))
+  }, numeric(1)),
+  max_abs_var_vs_truth = vapply(raw_utm, function(r) {
+    if (is.null(r)) NA_real_ else max(abs(r$var - truth_utm$var))
+  }, numeric(1))
+), row.names = FALSE)
+
 core_failed <- res_edge[res_edge$core & res_edge$status != "PASS", ]
 if (nrow(core_failed) > 0) {
   stop("Core numerical agreement check(s) failed: ", paste(core_failed$case, collapse = ", "))

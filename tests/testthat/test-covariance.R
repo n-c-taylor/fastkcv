@@ -28,6 +28,11 @@ test_that("covariance matches variogramLine for each supported model", {
     Mat15 = gstat::vgm(1, "Mat", 200, kappa = 1.5),
     Mat25 = gstat::vgm(1, "Mat", 200, kappa = 2.5),
     Ste = gstat::vgm(1, "Ste", 200, kappa = 1.2),
+    Cir = gstat::vgm(1, "Cir", 400, 0.1),
+    Pen = gstat::vgm(1, "Pen", 400),
+    Bes = gstat::vgm(1, "Bes", 100),
+    Wav = gstat::vgm(1, "Wav", 150, 0.1),
+    Hol = gstat::vgm(1, "Hol", 80),
     NugExpSph = gstat::vgm(0.5, "Sph", 500, add.to = gstat::vgm(0.4, "Exp", 100, 0.1))
   )
   for (nm in names(models)) {
@@ -102,7 +107,15 @@ cpp_cases <- function() {
     AnisNested = gstat::vgm(0.6, "Sph", 400, anis = c(30, 0.5),
       add.to = gstat::vgm(0.4, "Mat", 200, 0.1, kappa = 1.5,
         anis = c(120, 0.3))),
-    AnisSte = gstat::vgm(1, "Ste", 300, 0.2, kappa = 0.8, anis = c(135, 0.4))
+    AnisSte = gstat::vgm(1, "Ste", 300, 0.2, kappa = 0.8, anis = c(135, 0.4)),
+    Cir = gstat::vgm(1, "Cir", 400, 0.1),
+    Pen = gstat::vgm(1, "Pen", 400),
+    Bes = gstat::vgm(1, "Bes", 100),
+    Wav = gstat::vgm(1, "Wav", 150, 0.1),
+    Hol = gstat::vgm(1, "Hol", 80),
+    AnisPen = gstat::vgm(1, "Pen", 400, 0.1, anis = c(60, 0.3)),
+    NestedBesWav = gstat::vgm(0.6, "Bes", 120,
+      add.to = gstat::vgm(0.4, "Wav", 200, 0.1, anis = c(150, 0.5)))
   )
 }
 

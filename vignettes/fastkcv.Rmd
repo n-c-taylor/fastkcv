@@ -248,7 +248,20 @@ fastkcv's time, then `krige.cv()`'s time and the speed-up.
 
 The speed-up is largest for leave-one-out and shrinks as the folds become
 fewer and larger. A refit of k folds costs about k factorizations of size
-n (k - 1) / k, while fastkcv's single factorization dominates its own time.
+n (k - 1) / k, while fastkcv's single factorization dominates its own time
+for all but a few large folds (each fold of size m adds about m^2 n
+operations; at n = 3,000, the 2 folds of 2-fold cross-validation take about
+as long as the factorization, 10 folds a fifth of it).
+
+fastkcv computes exact global kriging. `krige.cv()` with a local
+neighborhood (`nmax`) solves a different, approximate kriging system of
+fixed size per prediction, so its time grows about linearly in n. For
+10-fold cross-validation with `nmax = 50` on the same simulated data it
+catches up with fastkcv at about n = 2,500 (OpenBLAS, 4 threads), at
+n = 1,500 to 2,000 with the default 8 OpenBLAS threads, and below n = 1,000
+with the reference BLAS. Its time also grows with the number of folds:
+local leave-one-out took 39 s at n = 4,000, against 0.8 s for fastkcv
+(OpenBLAS) and 23 s with the reference BLAS.
 DiceKriging, which uses the same closed-form leave-one-out formulas, is
 compared in the section "Related packages". With the reference BLAS every
 method is slower, and fastkcv's
@@ -266,7 +279,11 @@ much slower on these operations than an optimized BLAS such as OpenBLAS,
 Intel MKL or Apple's Accelerate. Check which one R uses with
 `extSoftVersion()["BLAS"]`; see `?kcv` (section "Performance") for how to
 switch. The many small matrix operations of buffered leave-one-out do not
-benefit from BLAS threads.
+benefit from BLAS threads. OpenBLAS starts one thread per logical CPU; on
+CPUs with simultaneous multithreading, one thread per physical core can be
+much faster (`OPENBLAS_NUM_THREADS=4` on the 4-core, 8-thread laptop above:
+1.6 to 2 times faster for 10-fold `kcv()` at n = 1,500 to 5,000). The
+table above used the default 8 threads.
 
 `kcv()` builds the covariance matrix in place and needs one n x n matrix
 (8 n^2 bytes: 0.8 GB at n = 10,000, 3.2 GB at n = 20,000); its measured

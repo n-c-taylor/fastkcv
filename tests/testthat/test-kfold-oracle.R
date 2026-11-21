@@ -38,7 +38,7 @@ test_that("k-fold matches krige.cv for every oracle model and anisotropy", {
   skip_on_cran()
   meuse <- meuse_df()
   fv <- withr::with_seed(13, sample(rep(1:6, length.out = nrow(meuse))))
-  models <- c(oracle_models(),
+  models <- c(oracle_models(), oracle_models_extra(),
     Aniso = list(gstat::vgm(0.4, "Exp", 500, 0.1, anis = c(30, 0.5),
       add.to = gstat::vgm(0.2, "Gau", 200, anis = c(120, 0.7))))
   )

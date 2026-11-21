@@ -13,6 +13,14 @@
 //   Gau  exp(-(h / a)^2)
 //   Mat  x^k K_k(x) / (2^(k-1) Gamma(k)),  x = h / a
 //   Ste  as Mat with x = 2 sqrt(k) h / a  (Stein's parameterization)
+//   Cir  1 - (2/pi) (r sqrt(1 - r^2) + asin r) for r = h/a < 1, else 0
+//   Pen  1 - (15/8 r - 5/4 r^3 + 3/8 r^5) for r = h/a < 1, else 0
+//   Bes  r K_1(r), r = h / a (1 at r = 0)
+//   Wav  sin(pi r) / (pi r), r = h / a (1 at r = 0)
+//   Hol  sin(r) / r, r = h / a (1 at r = 0)
+// All are positive (semi)definite in two dimensions. Bounded Lin is not
+// (its triangular covariance is valid in one dimension only), so it is
+// rejected in R.
 // Mat and Ste are evaluated on the log scale with the exponentially scaled
 // Bessel function, which stays finite where the direct product
 // x^k * K_k(x) underflows times overflows (large kappa, small lags); where
@@ -25,7 +33,12 @@
 
 namespace fastkcv {
 
-enum ModelType { NUG = 0, EXP = 1, SPH = 2, GAU = 3, MAT = 4, STE = 5 };
+// Codes are positions in R's `supported_models` minus 1; new models are
+// appended so that the existing codes never change.
+enum ModelType {
+  NUG = 0, EXP = 1, SPH = 2, GAU = 3, MAT = 4, STE = 5,
+  CIR = 6, PEN = 7, BES = 8, WAV = 9, HOL = 10
+};
 
 // Regular part of the small-x series of the Matern correlation,
 //   sum_j (-1)^j (x/2)^(2j) / (j! (k-1)(k-2)...(k-j)),  j < k.
@@ -69,6 +82,30 @@ inline double corr(int type, double h, double a, double k) {
     return matern_corr(h / a, k);
   case STE:
     return matern_corr(2.0 * std::sqrt(k) * h / a, k);
+  case CIR: {
+    if (h >= a) return 0.0;
+    double r = h / a;
+    return 1.0 - M_2_PI * (r * std::sqrt(1.0 - r * r) + std::asin(r));
+  }
+  case PEN: {
+    if (h >= a) return 0.0;
+    double r = h / a, r2 = r * r;
+    return 1.0 - r * (1.875 - r2 * (1.25 - 0.375 * r2));
+  }
+  case BES: {
+    double r = h / a;
+    if (r == 0.0) return 1.0;
+    // exp(r) K_1(r) (scaled) times r exp(-r); r K_1(r) -> 1 as r -> 0.
+    return r * R::bessel_k(r, 1.0, 2.0) * std::exp(-r);
+  }
+  case WAV: {
+    double r = M_PI * h / a;
+    return r == 0.0 ? 1.0 : std::sin(r) / r;
+  }
+  case HOL: {
+    double r = h / a;
+    return r == 0.0 ? 1.0 : std::sin(r) / r;
+  }
   default:
     return 0.0;
   }

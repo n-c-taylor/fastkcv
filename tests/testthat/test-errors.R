@@ -20,8 +20,15 @@ test_that("unbounded and unsupported models are rejected", {
     "Unbounded.*Lin")
   expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = gstat::vgm(1, "Pow", 1)),
     "Unbounded.*Pow")
-  expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = gstat::vgm(1, "Cir", 300)),
-    "Cir.*not supported")
+  expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = gstat::vgm(1, "Per", 300)),
+    "Per.*not supported")
+  # Lin with a positive range is bounded, but the triangular covariance is
+  # not positive definite in 2D (smallest eigenvalue -0.50 on a 31 x 31
+  # grid with range 0.5 and spacing 0.1).
+  expect_error(
+    kcv(log(zinc) ~ 1, ~ x + y, meuse, model = gstat::vgm(1, "Lin", 500, 0.1)),
+    "bounded linear model.*not.*valid covariance in two dimensions"
+  )
   expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = list(1)),
     "variogramModel")
   expect_error(kcv(log(zinc) ~ 1, ~ x + y, meuse), "`model`")
@@ -145,6 +152,41 @@ test_that("rank-deficient trends are rejected on every BLAS", {
   expect_no_error(kcv_engine_prepare(C, near, beta = c(1, 0)))
 })
 
+test_that("the rank error names the columns and suggests centering coordinates", {
+  meuse <- meuse_df()
+  err <- tryCatch(
+    kcv(log(zinc) ~ dist + I(2 * dist), ~ x + y, meuse, model = m_ok),
+    error = conditionMessage
+  )
+  expect_match(err, "column `I\\(2 \\* dist\\)` is \\(nearly\\) a linear combination")
+  expect_match(err, "Drop or combine")
+  expect_no_match(err, "Center")
+  # Unnamed columns (kcv_engine) are given by position.
+  expect_error(kcv_engine_prepare(diag(3), cbind(1, rep(1, 3))), "column 2 is")
+  # A full quadratic in raw coordinates with a large offset has full rank
+  # but is too ill-conditioned for the QR check (condition number of the
+  # column-scaled F ~1e8 at offset 1e3; in the grid script gstat is off by
+  # 0.065 there). Centering the coordinates leaves the predictions of a
+  # full polynomial unchanged.
+  d <- withr::with_seed(45, data.frame(
+    x = stats::runif(30) + 1e3, y = stats::runif(30) + 1e3,
+    z = stats::rnorm(30)
+  ))
+  f <- z ~ x + y + I(x^2) + I(y^2) + I(x * y)
+  m <- gstat::vgm(1, "Exp", 0.3, 0.1)
+  err <- tryCatch(kcv(f, ~ x + y, d, model = m), error = conditionMessage)
+  expect_match(err, "rank deficient or nearly so: columns .*`I\\(x\\^2\\)`")
+  expect_match(err, "Center the coordinates first")
+  expect_error(kcv_prepare(f, ~ x + y, d, model = m), "Center the coordinates")
+  dc <- transform(d, x = x - mean(x), y = y - mean(y))
+  d0 <- transform(d, x = x - 1e3, y = y - 1e3)
+  expect_close(
+    kcv(f, ~ x + y, dc, model = m)$var1.pred,
+    kcv(f, ~ x + y, d0, model = m)$var1.pred,
+    tolerance = 1e-12
+  )
+})
+
 test_that("C++ engine raises the R engine's fold errors", {
   s_xy <- withr::with_seed(5, matrix(stats::runif(40, 0, 100), ncol = 2))
   C <- covariance_matrix(gstat::vgm(1, "Exp", 30, 0.1), s_xy)
@@ -180,6 +222,24 @@ test_that("C++ fold inverse detects numerically singular Q[I, I]", {
   expect_equal(fold_inverse_cpp(matrix(4)), matrix(0.25))
   A <- matrix(c(2, 1, 1, 3), 2)
   expect_equal(fold_inverse_cpp(A), solve(A), tolerance = tol)
+})
+
+test_that("nearly singular Cholesky factors fail without console output", {
+  # The Cholesky factorization of diag(1, 1e-34) succeeds, but its factor has
+  # rcond 1e-17 < eps. Armadillo's default inv()/solve() would print a
+  # warning to the console (not an R condition) and return an approximate
+  # solution; the engine must report status 5 instead.
+  A <- diag(c(1, 1e-34))
+  out <- utils::capture.output(
+    {
+      v <- fold_inverse_cpp(A)
+      b <- buffer_solve_cpp(A, 0L)
+    },
+    type = "message"
+  )
+  expect_null(v)
+  expect_null(b)
+  expect_identical(out, character(0))
 })
 
 test_that("inputs above the memory budget are rejected before allocation", {

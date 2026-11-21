@@ -428,9 +428,22 @@ check_trend <- function(F) {
 # with F itself, whether its Cholesky failed for a rank-deficient F depended
 # on the BLAS's rounding of Wt F (MKL and ATLAS accepted F = cbind(1, 1)),
 # and it now sees only the orthonormal basis of trend_basis().
-check_trend_rank <- function(F) {
-  if (qr(F)$rank < ncol(F)) {
-    err_rank_deficient()
+# `uses_coords`: the trend formula uses the coordinate names (kcv() and
+# kcv_prepare() only). A polynomial in raw coordinates with a large offset
+# (e.g. UTM) is the common way to get here with a full-rank but
+# ill-conditioned F (unit square + 1e3, full quadratic: condition number of
+# the column-scaled F 1e8), so the message then suggests centering.
+check_trend_rank <- function(F, uses_coords = FALSE) {
+  q <- qr(F)
+  p <- ncol(F)
+  if (q$rank < p) {
+    dropped <- q$pivot[(q$rank + 1):p]
+    nm <- colnames(F)
+    cols <- if (is.null(nm)) dropped else paste0("`", nm[dropped], "`")
+    norms <- sqrt(colSums(F^2))
+    norms[norms == 0] <- 1
+    cond <- kappa(sweep(F, 2, norms, "/"), exact = TRUE)
+    err_rank_deficient(cols, cond, uses_coords)
   }
   invisible(TRUE)
 }
@@ -471,7 +484,8 @@ q_parts_r <- function(C, F, y, beta) {
   if (is.null(beta)) {
     CiF <- Ci %*% F
     RA <- tryCatch(chol(crossprod(F, CiF)), error = function(e) {
-      err_rank_deficient()
+      check_trend_rank(F)
+      err_trend_singular()
     })
     G <- backsolve(RA, t(CiF), transpose = TRUE)
     Q <- Ci - crossprod(G)
@@ -677,8 +691,31 @@ err_not_pd <- function() {
   )
 }
 
-err_rank_deficient <- function() {
-  stop("The trend matrix F is rank deficient.", call. = FALSE)
+err_rank_deficient <- function(cols, cond, uses_coords) {
+  stop(
+    "The trend matrix F is rank deficient or nearly so: ",
+    if (length(cols) == 1) {
+      paste0("column ", cols, " is (nearly) a linear combination")
+    } else {
+      paste0(
+        "columns ", paste(cols, collapse = ", "),
+        " are (nearly) linear combinations"
+      )
+    },
+    " of the others (condition number of F with unit-length columns: ",
+    format(signif(cond, 2)), "). ",
+    if (uses_coords) {
+      paste0(
+        "The trend uses the coordinates: with large coordinate values ",
+        "(e.g. UTM), powers and products of them are nearly collinear. ",
+        "Center the coordinates first (e.g. x - mean(x), y - mean(y)); for ",
+        "a full polynomial trend this does not change the predictions."
+      )
+    } else {
+      "Drop or combine those columns."
+    },
+    call. = FALSE
+  )
 }
 
 # C++ status 2: the Cholesky factor of U'C^-1 U (U an orthonormal basis of
@@ -734,13 +771,14 @@ raise_buffer_status <- function(status, i, m, radius, n) {
     "Point ", i, " (the buffer of radius ", format(radius), " holds out ",
     m, " of ", n, " observations)"
   )
-  # Statuses 1 and 2 belong to the prepare stage and never occur here.
+  # Status 1 belongs to the prepare stage and never occurs here; 2 only for a
+  # modified prepared object whose S fails the solve in compute_Qy().
   unexpected <- function() {
     stop("Unexpected status ", status, ".", call. = FALSE)
   }
   switch(status,
     unexpected(),
-    unexpected(),
+    err_trend_singular(),
     err_every_obs(i, label),
     err_unidentifiable(i, label,
       region = "the buffer", advice = "a smaller radius"

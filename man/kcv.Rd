@@ -31,8 +31,9 @@ holding both the locations and the variables (then \code{data} is not used).}
 \item{data}{A data.frame, when \code{locations} is a formula.}
 
 \item{model}{A \code{gstat} variogram model (\code{\link[gstat:vgm]{gstat::vgm()}}) with fixed
-parameters. Supported: \code{Nug}, \code{Exp}, \code{Sph}, \code{Gau}, \code{Mat}, \code{Ste} and nested
-sums of them, with optional 2D geometric anisotropy.}
+parameters. Supported: \code{Nug}, \code{Exp}, \code{Sph}, \code{Gau}, \code{Mat}, \code{Ste}, \code{Cir},
+\code{Pen}, \code{Bes}, \code{Wav}, \code{Hol} and nested sums of them, with optional 2D
+geometric anisotropy.}
 
 \item{nfold}{As in \code{\link[gstat:krige.cv]{gstat::krige.cv()}}: missing or \code{nrow(data)} for
 leave-one-out; a single integer \code{k < n} for random k-fold assignment
@@ -178,11 +179,18 @@ BLAS.
 
 Multithreaded BLAS libraries use all cores by default; when running
 several R processes in parallel, limit the threads (for OpenBLAS, the
-environment variable \code{OPENBLAS_NUM_THREADS}).
+environment variable \code{OPENBLAS_NUM_THREADS}). OpenBLAS starts one thread
+per logical CPU, and on CPUs with simultaneous multithreading
+(hyper-threading) one thread per physical core can be much faster: on a
+4-core, 8-thread laptop, \code{OPENBLAS_NUM_THREADS=4} made 10-fold \code{kcv()}
+1.6 to 2 times faster than the default at n = 1,500 to 5,000.
 
 The factorization depends only on the locations, the model and the trend,
 not on the folds. To cross-validate several fold schemes for the same
-data, call \code{\link[=kcv_prepare]{kcv_prepare()}} once and \code{\link[=kcv_run]{kcv_run()}} for each scheme.
+data, call \code{\link[=kcv_prepare]{kcv_prepare()}} once and \code{\link[=kcv_run]{kcv_run()}} for each scheme. Each
+fold of size \eqn{m} adds about \eqn{m^2 n} operations, so a few large
+folds cost the most: with 2 folds, the folds take about as long as the
+factorization.
 
 See \code{\link[=kcv_engine]{kcv_engine()}} for memory requirements.
 }
