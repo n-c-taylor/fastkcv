@@ -7,11 +7,22 @@
 \usage{
 kcv_prepare(formula, locations, data, model, beta = NULL, ...)
 
-kcv_run(prepared, nfold, folds = NULL, buffer = NULL, targets = NULL)
+kcv_run(
+  prepared,
+  nfold,
+  folds = NULL,
+  buffer = NULL,
+  targets = NULL,
+  y = NULL,
+  beta = NULL
+)
 }
 \arguments{
 \item{formula}{Formula defining the response and the trend, e.g.
-\code{log(zinc) ~ 1} or \code{log(zinc) ~ sqrt(dist)}.}
+\code{log(zinc) ~ 1} or \code{log(zinc) ~ sqrt(dist)}. A matrix response, such
+as \code{cbind(log(zinc), log(copper)) ~ 1} or a matrix column of \code{data},
+cross-validates each column with the same model, trend and folds; see
+"Several responses" below.}
 
 \item{locations}{A formula giving the coordinates (e.g. \code{~x + y}) when
 \code{data} is a data.frame, or an \code{sf} object or \code{sp} \code{Spatial*DataFrame}
@@ -23,8 +34,10 @@ holding both the locations and the variables (then \code{data} is not used).}
 parameters. Supported: \code{Nug}, \code{Exp}, \code{Sph}, \code{Gau}, \code{Mat}, \code{Ste} and nested
 sums of them, with optional 2D geometric anisotropy.}
 
-\item{beta}{Optional trend coefficients; if given, simple kriging with this
-known trend is used.}
+\item{beta}{Optional, for a \code{prepared} object made for simple kriging
+(with \code{beta}): new trend coefficients, a vector of length p or a p x T
+matrix as in \code{\link[=kcv]{kcv()}}. The factorization of simple kriging does not
+depend on them.}
 
 \item{...}{As in \code{\link[=kcv]{kcv()}}.}
 
@@ -48,6 +61,13 @@ row numbers or a logical vector of length \code{n}. The hold-out sets are
 still formed from all observations. Useful to estimate buffered
 leave-one-out statistics from a sample of points when the radius is
 large. By default every observation is predicted.}
+
+\item{y}{Optional new responses, replacing those of the data given to
+\code{kcv_prepare()}: a numeric vector of length n (output as from a single
+response) or an n x T matrix (T responses, output with a \code{response}
+column), with rows in the order of that data. The locations, trend
+covariates and model are those of \code{prepared}. Missing or non-finite
+values are an error.}
 }
 \value{
 \code{kcv_prepare()}: a \code{kcv_prepared} object. \code{kcv_run()}: the same
@@ -64,6 +84,11 @@ it, at a fraction of the cost. \code{kcv(...)} is equivalent to
 \details{
 The prepared object holds an \eqn{n \times n} matrix (\eqn{8 n^2} bytes)
 and can be saved with \code{\link[=saveRDS]{saveRDS()}}.
+
+\code{kcv_run(prepared, y = )} cross-validates new responses at the same
+locations, with the trend matrix and model stored in \code{prepared}, without
+another factorization: for example, many fields simulated at the
+observation locations. See "Several responses" in \code{\link[=kcv]{kcv()}}.
 }
 \examples{
 data(meuse, package = "sp")
@@ -76,6 +101,13 @@ rmse_10fold <- replicate(5, sqrt(mean(kcv_run(p, nfold = 10)$residual^2)))
 rmse_10fold
 # Buffered leave-one-out at several radii from the same factorization.
 sapply(c(0, 200, 400), function(r) kcv_metrics(kcv_run(p, buffer = r))$rmse)
+
+# New responses at the same locations: here 20 random permutations of
+# the observations, cross-validated from the same factorization.
+set.seed(2)
+perm <- replicate(20, sample(log(meuse$zinc)))
+cv_perm <- kcv_run(p, nfold = 10, y = perm)
+summary(kcv_metrics(cv_perm)$rmse)
 }
 \seealso{
 \code{\link[=kcv_engine_prepare]{kcv_engine_prepare()}} for a precomputed covariance matrix; the

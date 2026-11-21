@@ -10,7 +10,7 @@ kcv_engine(C, F, y, folds, beta = NULL)
 
 kcv_engine_prepare(C, F, beta = NULL)
 
-kcv_engine_run(prepared, y, folds)
+kcv_engine_run(prepared, y, folds, beta = NULL)
 }
 \arguments{
 \item{C}{n x n covariance matrix of the observations (symmetric positive
@@ -23,7 +23,11 @@ cross-validated with the same kriging weights.}
 
 \item{folds}{Vector of length n of fold identifiers.}
 
-\item{beta}{Optional trend coefficients (length p) for simple kriging.}
+\item{beta}{Optional trend coefficients for simple kriging: a length-p
+vector shared by every column of \code{y}, or a p x T matrix with one column
+per column of \code{y}. In \code{kcv_engine_run()}, replaces the coefficients
+given to \code{kcv_engine_prepare()}, which must have been made with \code{beta}
+(the factorization of simple kriging does not depend on \code{beta}).}
 
 \item{prepared}{A \code{kcv_prepared} object from \code{kcv_engine_prepare()} or
 \code{\link[=kcv_prepare]{kcv_prepare()}}.}

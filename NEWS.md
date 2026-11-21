@@ -11,6 +11,13 @@ First release.
 * `kcv_prepare()` and `kcv_run()`: factorize once, cross-validate any number
   of fold schemes.
 * Buffered leave-one-out (`buffer`), optionally for a subset of `targets`.
+* Several responses from one factorization: a matrix left-hand side
+  (`cbind(z1, z2) ~ 1`, or a matrix column) in `kcv()` and `kcv_prepare()`,
+  and new responses for a prepared object with `kcv_run(prepared, y = )`,
+  for every fold scheme and buffered leave-one-out. The output stacks one
+  block per response with a `response` column; `kcv_metrics()` summarizes
+  each response. Simple kriging takes one `beta` for all responses or a
+  p x T matrix (also in `kcv_run(beta = )` and `kcv_engine_run(beta = )`).
 * `kcv_engine()`, `kcv_engine_prepare()` and `kcv_engine_run()`: the same
   computation from a precomputed covariance matrix, for a matrix-valued
   response.

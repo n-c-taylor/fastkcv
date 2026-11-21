@@ -16,7 +16,7 @@ R CMD INSTALL --preclean . > inst/bench/cache/install.log 2>&1 || exit 1
 steps="$*"
 if [ -z "$steps" ]; then
   for blas in openblas refblas; do
-    for s in folds dice auto-rule rss buffer-large; do
+    for s in folds dice auto-rule rss buffer-large multi; do
       steps="$steps $blas/$s"
     done
   done

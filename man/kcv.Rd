@@ -19,7 +19,10 @@ kcv(
 }
 \arguments{
 \item{formula}{Formula defining the response and the trend, e.g.
-\code{log(zinc) ~ 1} or \code{log(zinc) ~ sqrt(dist)}.}
+\code{log(zinc) ~ 1} or \code{log(zinc) ~ sqrt(dist)}. A matrix response, such
+as \code{cbind(log(zinc), log(copper)) ~ 1} or a matrix column of \code{data},
+cross-validates each column with the same model, trend and folds; see
+"Several responses" below.}
 
 \item{locations}{A formula giving the coordinates (e.g. \code{~x + y}) when
 \code{data} is a data.frame, or an \code{sf} object or \code{sp} \code{Spatial*DataFrame}
@@ -40,7 +43,9 @@ folds); or a vector of length \code{n} of fold identifiers.}
 precedence over \code{nfold}.}
 
 \item{beta}{Optional trend coefficients; if given, simple kriging with this
-known trend is used.}
+known trend is used. A vector of length p (the number of trend
+coefficients) is shared by all responses; with several responses, a
+p x T matrix gives one column of coefficients per response.}
 
 \item{buffer}{Optional radius for buffered leave-one-out, in coordinate
 units (\eqn{\ge 0}). Each observation is predicted from the observations
@@ -66,7 +71,10 @@ divided by the kriging standard error) and \code{fold}, as in \code{krige.cv()}.
 With \code{buffer}, \code{fold} is the row number (each observation is its own
 hold-out set) and a column \code{n_heldout} gives the number of observations
 held out for it, itself included; with \code{targets}, only the target rows
-are returned, in increasing row order.
+are returned, in increasing row order. With a matrix response, the
+results of the responses are stacked (all rows of the first response,
+then the second, ...) and a factor column \code{response}, after \code{fold}
+(and \code{n_heldout}), names the response of each row.
 }
 \description{
 A drop-in companion to \code{\link[gstat:krige.cv]{gstat::krige.cv()}} for global kriging (every
@@ -80,6 +88,34 @@ Ordinary kriging (\code{formula = z ~ 1}) and universal kriging (\code{z ~ x + y
 external drift, ...) re-estimate the trend by generalized least squares in
 each fold, as gstat does. Simple kriging is used when \code{beta} is supplied.
 }
+\section{Several responses}{
+
+The kriging weights depend only on the locations, the variogram model,
+the trend and the folds, not on the observed values. A matrix response
+with T columns is therefore cross-validated from one factorization: each
+additional response costs a few matrix products (no further
+factorization), and in buffered leave-one-out the hold-out sets and their
+factorizations are shared too. Typical uses are many simulated fields,
+several variables or time slices observed at the same locations, or
+bootstrap replicates. \code{\link[=kcv_run]{kcv_run()}} with \code{y} cross-validates new responses
+from an existing prepared object.
+
+A response with one column (such as \code{scale(z) ~ 1}, or a one-column
+matrix column) is a single response, as in \code{\link[stats:model.response]{stats::model.response()}},
+unless the left-hand side is an explicit \code{cbind()}.
+
+Every response is predicted at every location, so a missing or
+non-finite value in any column is an error. Response names come from
+the column names, else from the arguments of \code{cbind()}, else they are
+\code{"1"}, \code{"2"}, .... Each response's rows are the output of the
+single-response call, up to rounding in the last bits (with several
+columns the BLAS uses matrix-matrix products). \code{\link[=kcv_metrics]{kcv_metrics()}}
+summarizes each response separately. The output holds about
+\eqn{10 n} numbers per response; several responses are checked against
+the \code{fastkcv.max_gb} budget (see \code{\link[=kcv_engine]{kcv_engine()}}) left after the
+factorization, and the error message gives a batch size that fits.
+}
+
 \section{Buffered leave-one-out}{
 
 With \code{buffer = r}, observation \eqn{i} is held out together with every
@@ -168,4 +204,9 @@ kcv_metrics(cv_buf)
 set.seed(1)
 kcv_metrics(kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, buffer = 300,
   targets = sample(nrow(meuse), 50)))
+
+# Several responses with the same model, trend and folds.
+cv3 <- kcv(cbind(log(zinc), log(copper), log(lead)) ~ 1, ~ x + y, meuse,
+  model = v, nfold = 5)
+kcv_metrics(cv3)
 }

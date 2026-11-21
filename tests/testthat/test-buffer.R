@@ -3,19 +3,6 @@
 
 m_buf <- gstat::vgm(0.5, "Sph", 900, 0.1)
 
-# Buffered leave-one-out by brute force with gstat: drop the hold-out set of
-# point i and krige point i from the remaining data.
-krige_buffer <- function(formula, data, model, sets, targets, beta = NULL) {
-  out <- lapply(targets, function(i) {
-    k <- gstat::krige(formula, ~ x + y, data[-sets[[i]], ], data[i, ],
-      model = model, beta = beta, debug.level = 0
-    )
-    c(k$var1.pred, k$var1.var)
-  })
-  out <- do.call(rbind, out)
-  list(pred = out[, 1], var = out[, 2])
-}
-
 buffer_cases <- function() {
   list(
     OK = list(f = log(zinc) ~ 1, beta = NULL),

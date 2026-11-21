@@ -152,6 +152,43 @@ nrow(out)
 kcv_metrics(out)[c("n", "rmse", "var_z")]
 ```
 
+## Several responses
+
+The kriging weights depend on the locations, the model, the trend and the
+folds, but not on the observed values. A matrix response is therefore
+cross-validated from one factorization, and each additional column costs
+only a few matrix products. The output stacks one block per response and
+adds a `response` column. `kcv_metrics()` then gives one row per
+response:
+
+```{r multi}
+cv_metals <- kcv(cbind(log(zinc), log(copper), log(lead)) ~ 1, ~ x + y,
+  meuse, model = v, folds = f10)
+table(cv_metals$response)
+kcv_metrics(cv_metals)[c("response", "rmse", "var_z", "coverage_90")]
+```
+
+`kcv_run(p, y = )` cross-validates new responses at the locations of a
+prepared object, with its trend and model. A simulation study is one use:
+here, 200 fields are simulated from the variogram model at the
+observation locations, and the cross-validated z-scores and interval
+coverage are compared with their nominal values. They hold on average
+when the model is correct:
+
+```{r multi-sim}
+C_v <- variogramLine(v, covariance = TRUE,
+  dist_vector = as.matrix(dist(meuse[, c("x", "y")])))
+set.seed(3)
+sims <- crossprod(chol(C_v), matrix(rnorm(nrow(meuse) * 200),
+  nrow(meuse)))
+m_sim <- kcv_metrics(kcv_run(p, nfold = f10, y = sims))
+nrow(m_sim)
+colMeans(m_sim[c("mean_z", "var_z", "coverage_80", "coverage_95")])
+```
+
+Every response must be observed at every location. A missing value in any
+column is an error, because a response cannot drop its own rows.
+
 ## A precomputed covariance matrix
 
 `kcv_engine()` takes the covariance matrix of the observations, the trend
@@ -212,6 +249,11 @@ method is slower, and fastkcv's
 gain over `krige.cv()` is still about 600x for leave-one-out at
 n = 1,000 and 2.5x to 6x for 5 to 10 folds at n = 1,000 to 5,000. At
 n = 20,000, `kcv()` takes about 110 seconds.
+
+Several responses share the factorization. At n = 5,000 (OpenBLAS), 100
+responses take 2.7 s (leave-one-out) to 3.6 s (buffered, radius 50) in one
+`kcv()` call, 2 to 5 ms per additional response. One `kcv()` call per
+response takes 233 to 317 s.
 
 The reference BLAS that ships with many R builds is single-threaded and
 much slower on these operations than an optimized BLAS such as OpenBLAS,

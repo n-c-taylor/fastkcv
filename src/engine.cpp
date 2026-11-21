@@ -90,14 +90,22 @@ bool identifiable(const arma::mat& U, const arma::uvec& idx) {
 }
 
 // Q y for ordinary/universal kriging, Q (y - F beta) for simple kriging,
-// with C^{-1} = Wt' Wt.
+// with C^{-1} = Wt' Wt. `Beta` is p x 1 (shared by every column of Y) or
+// p x T (column t for response t); F * Beta.col(t) is a gemv per column, as
+// for a single response.
 arma::mat compute_Qy(const arma::mat& Wt, const arma::mat& B,
                      const arma::mat& S, const arma::mat& G,
                      const arma::mat& F, const arma::mat& Y, bool simple,
-                     const arma::vec& beta) {
+                     const arma::mat& Beta) {
   if (simple) {
     arma::mat Yt = Y;
-    Yt.each_col() -= F * beta;
+    if (Beta.n_cols == 1) {
+      Yt.each_col() -= F * arma::vec(Beta.unsafe_col(0));
+    } else {
+      for (arma::uword t = 0; t < Yt.n_cols; ++t) {
+        Yt.col(t) -= F * arma::vec(Beta.unsafe_col(t));
+      }
+    }
     return Wt.t() * (Wt * Yt);
   }
   arma::mat Z = Wt * Y;
@@ -318,7 +326,7 @@ Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
                    const arma::mat& U, const arma::vec& qdiag,
                    const arma::mat& F, const arma::mat& Y,
                    const Rcpp::List& fold_idx, bool simple,
-                   const arma::vec& beta) {
+                   const arma::mat& beta) {
   try {
     const int n = Wr.nrow();
     const arma::uword T = Y.n_cols;
@@ -396,7 +404,7 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
                           const arma::mat& F, const arma::mat& Y,
                           const arma::mat& coords, double radius,
                           const arma::uvec& targets, bool simple,
-                          const arma::vec& beta, int method,
+                          const arma::mat& beta, int method,
                           double max_cache_bytes) {
   try {
     const arma::uword n = Wr.nrow();

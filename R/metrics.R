@@ -29,9 +29,14 @@
 #'   instead of one overall row.
 #' @param level Nominal coverage levels of the prediction intervals, in
 #'   (0, 1).
+#' @param by_response If `TRUE` (the default) and `x` has a `response`
+#'   column (the output of a cross-validation of several responses), one row
+#'   per response (in the order of its levels), or per response and fold
+#'   with `by_fold = TRUE`. `FALSE` pools the responses. Ignored without a
+#'   `response` column.
 #' @return A data.frame with columns `n`, `rmse`, `mae`, `bias`, `mean_z`,
 #'   `var_z` and one `coverage_*` column per level, preceded by `fold` when
-#'   `by_fold = TRUE`.
+#'   `by_fold = TRUE`, and by `response` for several responses.
 #' @seealso [kcv()], [fold_blocks()] and the other fold builders.
 #' @export
 #' @examples
@@ -44,7 +49,7 @@
 #'   folds = fold_blocks(~ x + y, meuse, blocks = 2))
 #' kcv_metrics(cv5, by_fold = TRUE)
 kcv_metrics <- function(x, by_fold = FALSE,
-                        level = c(0.5, 0.8, 0.9, 0.95)) {
+                        level = c(0.5, 0.8, 0.9, 0.95), by_response = TRUE) {
   if (inherits(x, "sf")) {
     x <- sf::st_drop_geometry(x)
   } else if (inherits(x, "Spatial")) {
@@ -63,6 +68,10 @@ kcv_metrics <- function(x, by_fold = FALSE,
   }
   if (!is.logical(by_fold) || length(by_fold) != 1 || is.na(by_fold)) {
     stop("`by_fold` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.logical(by_response) || length(by_response) != 1 ||
+    is.na(by_response)) {
+    stop("`by_response` must be TRUE or FALSE.", call. = FALSE)
   }
   if (!is.numeric(level) || length(level) == 0 || anyNA(level) ||
     any(level <= 0 | level >= 1) || anyDuplicated(level)) {
@@ -104,13 +113,31 @@ kcv_metrics <- function(x, by_fold = FALSE,
     out
   }
 
-  if (!by_fold) {
-    return(summarize(e, v))
+  one <- function(i) {
+    if (!by_fold) {
+      return(summarize(e[i], v[i]))
+    }
+    fold <- x$fold[i]
+    folds <- sort(unique(fold))
+    rows <- lapply(folds, function(f) {
+      j <- i[fold == f]
+      summarize(e[j], v[j])
+    })
+    cbind(fold = folds, do.call(rbind, rows))
   }
-  folds <- sort(unique(x$fold))
-  rows <- lapply(folds, function(f) {
-    i <- which(x$fold == f)
-    summarize(e[i], v[i])
+
+  if (!by_response || !("response" %in% names(x))) {
+    return(one(seq_along(e)))
+  }
+  resp <- x$response
+  lev <- if (is.factor(resp)) levels(resp) else sort(unique(resp))
+  lev <- lev[lev %in% resp]
+  parts <- lapply(lev, function(r) {
+    out <- one(which(resp == r))
+    cbind(response = rep(r, nrow(out)), out)
   })
-  cbind(fold = folds, do.call(rbind, rows))
+  out <- do.call(rbind, parts)
+  if (is.factor(resp)) out$response <- factor(out$response, levels = lev)
+  rownames(out) <- NULL
+  out
 }

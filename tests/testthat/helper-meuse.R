@@ -43,6 +43,20 @@ expect_cv_equal <- function(a, b, tolerance = tol) {
 
 krige_cv <- function(...) gstat::krige.cv(..., verbose = FALSE)
 
+# Buffered leave-one-out by brute force with gstat: drop the hold-out set of
+# point i and krige point i from the remaining data. Used by test-buffer.R
+# and test-multi.R.
+krige_buffer <- function(formula, data, model, sets, targets, beta = NULL) {
+  out <- lapply(targets, function(i) {
+    k <- gstat::krige(formula, ~ x + y, data[-sets[[i]], ], data[i, ],
+      model = model, beta = beta, debug.level = 0
+    )
+    c(k$var1.pred, k$var1.var)
+  })
+  out <- do.call(rbind, out)
+  list(pred = out[, 1], var = out[, 2])
+}
+
 simulate_field <- function(n, model, seed) {
   withr::with_seed(seed, {
     xy <- matrix(stats::runif(2 * n, 0, 1000), ncol = 2)

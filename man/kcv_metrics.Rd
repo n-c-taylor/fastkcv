@@ -4,7 +4,12 @@
 \alias{kcv_metrics}
 \title{Summary statistics of a cross-validation}
 \usage{
-kcv_metrics(x, by_fold = FALSE, level = c(0.5, 0.8, 0.9, 0.95))
+kcv_metrics(
+  x,
+  by_fold = FALSE,
+  level = c(0.5, 0.8, 0.9, 0.95),
+  by_response = TRUE
+)
 }
 \arguments{
 \item{x}{Output of \code{\link[=kcv]{kcv()}} or \code{\link[=kcv_run]{kcv_run()}}: a data.frame, an \code{sf} object or
@@ -16,11 +21,17 @@ instead of one overall row.}
 
 \item{level}{Nominal coverage levels of the prediction intervals, in
 (0, 1).}
+
+\item{by_response}{If \code{TRUE} (the default) and \code{x} has a \code{response}
+column (the output of a cross-validation of several responses), one row
+per response (in the order of its levels), or per response and fold
+with \code{by_fold = TRUE}. \code{FALSE} pools the responses. Ignored without a
+\code{response} column.}
 }
 \value{
 A data.frame with columns \code{n}, \code{rmse}, \code{mae}, \code{bias}, \code{mean_z},
 \code{var_z} and one \verb{coverage_*} column per level, preceded by \code{fold} when
-\code{by_fold = TRUE}.
+\code{by_fold = TRUE}, and by \code{response} for several responses.
 }
 \description{
 Summarizes the output of \code{\link[=kcv]{kcv()}} or \code{\link[=kcv_run]{kcv_run()}} (or of

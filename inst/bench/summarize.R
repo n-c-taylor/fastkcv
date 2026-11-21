@@ -131,6 +131,30 @@ if (!is.null(a)) {
     "cost_ratio = cost_points / cost_pairs (auto picks pairs when > 1); loss = time of auto's pick / faster - 1.")
 }
 
+# 7. Several responses from one factorization.
+m <- read_all("multi")
+if (!is.null(m)) {
+  # Time per extra response, (t(T) - t(1)) / (T - 1), for each method.
+  key <- paste(m$blas, m$n, m$scheme)
+  for (col in c("kcv_multi", "kcv_loop", "run_multi", "run_loop")) {
+    t1 <- m[[col]][m$T == 1][match(key, key[m$T == 1])]
+    m[[paste0(col, "_extra")]] <- ifelse(m$T > 1,
+      (m[[col]] - t1) / (m$T - 1), NA)
+  }
+  m$`loop/multi` <- round(m$kcv_loop / m$kcv_multi, 1)
+  m <- m[order(m$blas, m$n, match(m$scheme, c("LOO", "10-fold",
+    "buffer 50")), m$T), c("blas", "n", "scheme", "T", "prepare_s",
+    "kcv_multi", "kcv_loop", "loop/multi", "kcv_multi_extra",
+    "kcv_loop_extra", "run_multi", "run_loop", "run_multi_extra",
+    "run_loop_extra", "max_abs_diff")]
+  for (col in grep("_s$|kcv_|run_", names(m), value = TRUE)) {
+    m[[col]] <- sig(m[[col]])
+  }
+  m$max_abs_diff <- sig(m$max_abs_diff, 2)
+  emit("Several responses from one factorization (seconds)", m,
+    "*_extra = (t(T) - t(1)) / (T - 1), the time per extra response; kcv_* end to end, run_* run stage only; NA = skipped.")
+}
+
 if (!is.na(out_file)) {
   writeLines(c("# Benchmark summary", lines), out_file)
   message("wrote ", out_file)

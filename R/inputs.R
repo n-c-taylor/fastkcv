@@ -3,7 +3,8 @@
 #' Accepts the same shapes as [gstat::krige.cv()]: a `data.frame` with
 #' `locations = ~x + y`, an `sf` object, or an `sp` `Spatial*DataFrame`.
 #'
-#' @return A list with `y` (n x 1 matrix), `F` (n x p trend matrix), `coords`
+#' @return A list with `y` (n x T matrix; T = 1 for a vector response),
+#'   `multi` (whether the response was a matrix), `F` (n x p trend matrix), `coords`
 #'   (n x 2 matrix), `kind` ("data.frame", "sf" or "sp"), `locations` (the
 #'   spatial input, for rebuilding output), and `coord_names`.
 #' @noRd
@@ -30,17 +31,31 @@ parse_inputs <- function(formula, locations, data) {
 
   mf <- stats::model.frame(formula, df, na.action = stats::na.pass)
   y <- stats::model.response(mf)
-  if (!is.numeric(y) || !is.null(dim(y))) {
-    stop("The response in `formula` must be a numeric vector.", call. = FALSE)
+  # A matrix response (cbind(z1, z2) ~ ..., or a matrix column) gives
+  # several responses cross-validated with one factorization.
+  # model.response() drops a one-column matrix to a vector (as for
+  # scale(z) ~ 1, which stays a single response); an explicit cbind() keeps
+  # it as one of "several" responses.
+  multi <- is.matrix(y) || (is_cbind(formula[[2]]) && is.matrix(mf[[1L]]))
+  if (multi) {
+    if (!is.matrix(y)) y <- mf[[1L]]
+    y <- check_responses(y, response_names(formula, y), "The response")
+  } else {
+    if (!is.numeric(y) || !is.null(dim(y))) {
+      stop("The response in `formula` must be a numeric vector.",
+        call. = FALSE
+      )
+    }
+    if (anyNA(y)) {
+      stop(
+        "The response has ", sum(is.na(y)), " missing value(s). ",
+        "Remove them before cross-validation.",
+        call. = FALSE
+      )
+    }
+    y <- matrix(as.numeric(y), ncol = 1)
   }
-  if (anyNA(y)) {
-    stop(
-      "The response has ", sum(is.na(y)), " missing value(s). ",
-      "Remove them before cross-validation.",
-      call. = FALSE
-    )
-  }
-  F <- stats::model.matrix(stats::delete.response(stats::terms(formula)), mf)
+  F <-stats::model.matrix(stats::delete.response(stats::terms(formula)), mf)
   if (anyNA(F)) {
     stop("Trend covariates in `formula` contain missing values.", call. = FALSE)
   }
@@ -49,13 +64,70 @@ parse_inputs <- function(formula, locations, data) {
   attr(F, "contrasts") <- NULL
 
   list(
-    y = matrix(as.numeric(y), ncol = 1),
+    y = y,
+    multi = multi,
     F = F,
     coords = coords,
     coord_names = cc$coord_names,
     kind = cc$kind,
     locations = if (cc$kind == "data.frame") NULL else locations
   )
+}
+
+# Names of the columns of a matrix response: its column names, else the
+# deparsed arguments of a cbind() left-hand side (cbind() names only bare
+# symbols), else "1", ..., "T".
+response_names <- function(formula, y) {
+  nm <- colnames(y)
+  if (is.null(nm)) nm <- rep("", ncol(y))
+  lhs <- formula[[2]]
+  if (is_cbind(lhs) && length(lhs) - 1 == ncol(y)) {
+    args <- vapply(as.list(lhs)[-1], function(a) {
+      paste(deparse(a, width.cutoff = 500L), collapse = " ")
+    }, "")
+    nm[nm == ""] <- args[nm == ""]
+  }
+  if (any(nm == "")) nm <- as.character(seq_len(ncol(y)))
+  nm
+}
+
+is_cbind <- function(lhs) {
+  is.call(lhs) && identical(lhs[[1]], as.name("cbind"))
+}
+
+# Checks an n x T matrix of responses and returns it as a double matrix
+# with column names `names` and no row names. `what` starts the messages.
+check_responses <- function(y, names, what) {
+  if (!is.numeric(y) || length(dim(y)) != 2) {
+    stop(what, " must be a numeric vector or matrix.", call. = FALSE)
+  }
+  if (ncol(y) == 0) {
+    stop(what, " has no columns.", call. = FALSE)
+  }
+  if (anyDuplicated(names)) {
+    stop(what, " has duplicate column names (",
+      paste0("`", unique(names[duplicated(names)]), "`", collapse = ", "),
+      "); each response needs a distinct name.",
+      call. = FALSE
+    )
+  }
+  y <- matrix(as.double(y), nrow(y), ncol(y), dimnames = list(NULL, names))
+  bad <- colSums(!is.finite(y))
+  if (any(bad > 0)) {
+    j <- which(bad > 0)[1]
+    stop(
+      "Response `", names[j], "` has ", bad[j], " missing or non-finite ",
+      "value(s)",
+      if (sum(bad > 0) > 1) {
+        paste0(" (and ", sum(bad > 0) - 1, " other response(s))")
+      },
+      ". Every response must be observed at every location (a response ",
+      "cannot drop its own rows); remove those locations for all responses ",
+      "or cross-validate that response separately.",
+      call. = FALSE
+    )
+  }
+  y
 }
 
 lonlat_message <- function() {

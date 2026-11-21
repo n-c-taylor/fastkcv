@@ -63,7 +63,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // run_cpp
-Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B, const arma::mat& S, const arma::mat& G, const arma::mat& U, const arma::vec& qdiag, const arma::mat& F, const arma::mat& Y, const Rcpp::List& fold_idx, bool simple, const arma::vec& beta);
+Rcpp::List run_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B, const arma::mat& S, const arma::mat& G, const arma::mat& U, const arma::vec& qdiag, const arma::mat& F, const arma::mat& Y, const Rcpp::List& fold_idx, bool simple, const arma::mat& beta);
 RcppExport SEXP _fastkcv_run_cpp(SEXP WrSEXP, SEXP BSEXP, SEXP SSEXP, SEXP GSEXP, SEXP USEXP, SEXP qdiagSEXP, SEXP FSEXP, SEXP YSEXP, SEXP fold_idxSEXP, SEXP simpleSEXP, SEXP betaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -78,13 +78,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::mat& >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type fold_idx(fold_idxSEXP);
     Rcpp::traits::input_parameter< bool >::type simple(simpleSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta(betaSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type beta(betaSEXP);
     rcpp_result_gen = Rcpp::wrap(run_cpp(Wr, B, S, G, U, qdiag, F, Y, fold_idx, simple, beta));
     return rcpp_result_gen;
 END_RCPP
 }
 // run_buffer_cpp
-Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B, const arma::mat& S, const arma::mat& G, const arma::mat& U, const arma::vec& qdiag, const arma::mat& F, const arma::mat& Y, const arma::mat& coords, double radius, const arma::uvec& targets, bool simple, const arma::vec& beta, int method, double max_cache_bytes);
+Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B, const arma::mat& S, const arma::mat& G, const arma::mat& U, const arma::vec& qdiag, const arma::mat& F, const arma::mat& Y, const arma::mat& coords, double radius, const arma::uvec& targets, bool simple, const arma::mat& beta, int method, double max_cache_bytes);
 RcppExport SEXP _fastkcv_run_buffer_cpp(SEXP WrSEXP, SEXP BSEXP, SEXP SSEXP, SEXP GSEXP, SEXP USEXP, SEXP qdiagSEXP, SEXP FSEXP, SEXP YSEXP, SEXP coordsSEXP, SEXP radiusSEXP, SEXP targetsSEXP, SEXP simpleSEXP, SEXP betaSEXP, SEXP methodSEXP, SEXP max_cache_bytesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -101,7 +101,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type radius(radiusSEXP);
     Rcpp::traits::input_parameter< const arma::uvec& >::type targets(targetsSEXP);
     Rcpp::traits::input_parameter< bool >::type simple(simpleSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta(betaSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type beta(betaSEXP);
     Rcpp::traits::input_parameter< int >::type method(methodSEXP);
     Rcpp::traits::input_parameter< double >::type max_cache_bytes(max_cache_bytesSEXP);
     rcpp_result_gen = Rcpp::wrap(run_buffer_cpp(Wr, B, S, G, U, qdiag, F, Y, coords, radius, targets, simple, beta, method, max_cache_bytes));

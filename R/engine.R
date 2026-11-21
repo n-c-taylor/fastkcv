@@ -36,7 +36,11 @@
 #' @param y Response: a numeric vector or an n x T matrix. Each column is
 #'   cross-validated with the same kriging weights.
 #' @param folds Vector of length n of fold identifiers.
-#' @param beta Optional trend coefficients (length p) for simple kriging.
+#' @param beta Optional trend coefficients for simple kriging: a length-p
+#'   vector shared by every column of `y`, or a p x T matrix with one column
+#'   per column of `y`. In `kcv_engine_run()`, replaces the coefficients
+#'   given to `kcv_engine_prepare()`, which must have been made with `beta`
+#'   (the factorization of simple kriging does not depend on `beta`).
 #' @return `kcv_engine()` and `kcv_engine_run()` return a list with `pred`
 #'   (n x T matrix), `var` (length-n vector; the same for every column of
 #'   `y`) and `folds`. `kcv_engine_prepare()` returns a `kcv_prepared` object
@@ -93,7 +97,7 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
 #' @param prepared A `kcv_prepared` object from `kcv_engine_prepare()` or
 #'   [kcv_prepare()].
 #' @export
-kcv_engine_run <- function(prepared, y, folds) {
+kcv_engine_run <- function(prepared, y, folds, beta = NULL) {
   check_prepared(prepared)
   n <- length(prepared$qdiag)
   if (!is.matrix(y)) {
@@ -113,6 +117,8 @@ kcv_engine_run <- function(prepared, y, folds) {
       call. = FALSE
     )
   }
+  prepared <- use_beta(prepared, beta, ncol(y))
+  check_run_memory(n, ncol(y), n)
   run_prepared(prepared, y, folds)
 }
 
@@ -148,10 +154,87 @@ new_prepared <- function(res, F, beta, inp, matrices) {
       Wt = res$Wt, B = res$B, S = res$S, G = res$G,
       U = if (simple) matrix(0, 0, 0) else qr.Q(qr(F)),
       qdiag = res$qdiag, F = F,
-      beta = if (simple) as.double(beta) else NULL,
+      beta = if (simple) store_beta(beta) else NULL,
       inp = inp
     ),
     class = "kcv_prepared"
+  )
+}
+
+# A vector beta is kept as a double vector (as before); a p x T matrix as a
+# double matrix without dimnames.
+store_beta <- function(beta) {
+  if (is.matrix(beta)) {
+    matrix(as.double(beta), nrow(beta), ncol(beta))
+  } else {
+    as.double(beta)
+  }
+}
+
+# beta for the C++ engine: p x 1 (shared) or p x T; empty for OK/UK.
+beta_cpp <- function(p) {
+  if (is.null(p$beta)) matrix(0, 0, 0) else as.matrix(p$beta)
+}
+
+# Returns `p` with `beta` replacing its simple-kriging coefficients (when
+# given), after checking it against the `n_resp` responses.
+use_beta <- function(p, beta, n_resp) {
+  if (!is.null(beta)) {
+    if (is.null(p$beta)) {
+      stop(
+        "`beta` can only be given for a prepared object made for simple ",
+        "kriging (with `beta`); ordinary and universal kriging estimate ",
+        "the trend in every fold.",
+        call. = FALSE
+      )
+    }
+    check_beta(beta, p$F, n_resp)
+    p$beta <- store_beta(beta)
+  } else if (is.matrix(p$beta) && ncol(p$beta) > 1 &&
+    ncol(p$beta) != n_resp) {
+    stop(
+      "The prepared object's `beta` has ", ncol(p$beta), " columns (one ",
+      "per response) but there are ", n_resp, " response(s); pass a ",
+      "matching `beta`.",
+      call. = FALSE
+    )
+  }
+  p
+}
+
+# Up-front memory check of the run stage for several responses: the C++
+# work matrices (y, Wt y, Q y, predictions: about 4 n doubles per response)
+# and the long output (about 10 n_out doubles per response) must fit in the
+# budget left after the n x n factor. One response is never checked, so
+# single-response behavior is unchanged.
+check_run_memory <- function(n, n_resp, n_out) {
+  if (n_resp <= 1) {
+    return(invisible(TRUE))
+  }
+  max_gb <- getOption("fastkcv.max_gb", 6.4)
+  per_col <- 8 * (4 * as.double(n) + 10 * as.double(n_out))
+  avail <- max_gb * 1e9 - 8 * as.double(n)^2
+  if (per_col * n_resp > avail) {
+    err_responses_memory(n, n_resp, per_col * n_resp / 1e9, max_gb,
+      max(0, floor(avail / per_col)))
+  }
+  invisible(TRUE)
+}
+
+err_responses_memory <- function(n, n_resp, gb, max_gb, batch) {
+  stop(
+    n_resp, " responses at n = ", n, " need about ",
+    format(signif(gb, 2)), " GB for the cross-validation work matrices ",
+    "and output, more than the memory budget of ", format(max_gb),
+    " GB leaves after the n x n factor. ",
+    if (batch >= 1) {
+      paste0("Run the responses in batches of at most ", batch,
+        " columns (kcv_run(prepared, y = )), or raise ")
+    } else {
+      "Raise "
+    },
+    "the budget with options(fastkcv.max_gb = ).",
+    call. = FALSE
   )
 }
 
@@ -171,8 +254,7 @@ run_buffer_prepared <- function(p, y, radius, targets = NULL,
   max_gb <- getOption("fastkcv.max_gb", 6.4)
   res <- run_buffer_cpp(
     p$Wt, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, p$inp$coords,
-    as.double(radius), as.integer(targets) - 1L, simple,
-    if (simple) p$beta else numeric(0),
+    as.double(radius), as.integer(targets) - 1L, simple, beta_cpp(p),
     match(method, c("auto", "pairs", "points")) - 1L,
     max(0, max_gb * 1e9 - 8 * as.double(n)^2)
   )
@@ -235,7 +317,7 @@ run_prepared <- function(p, y, folds) {
   fold_idx <- unname(split(seq_along(folds) - 1L, match(folds, labels)))
   res <- run_cpp(
     p$Wt, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, fold_idx, simple,
-    if (simple) p$beta else numeric(0)
+    beta_cpp(p)
   )
   if (res$status != 0) {
     f <- if (res$fold > 0) labels[res$fold] else NA
@@ -279,11 +361,30 @@ check_prepared <- function(x) {
   invisible(TRUE)
 }
 
-check_beta <- function(beta, F) {
+# `beta` is a length-p vector shared by every response or a p x T matrix
+# (column t for response t); `n_resp` is T when known.
+check_beta <- function(beta, F, n_resp = NULL) {
   if (is.null(beta)) {
     return(invisible(TRUE))
   }
-  if (length(beta) != ncol(F)) {
+  if (is.matrix(beta)) {
+    if (nrow(beta) != ncol(F)) {
+      stop(
+        "`beta` has ", nrow(beta), " row(s) but the trend has ", ncol(F),
+        " coefficient(s); a matrix `beta` must be p x T, one column per ",
+        "response.",
+        call. = FALSE
+      )
+    }
+    if (!is.null(n_resp) && ncol(beta) != 1 && ncol(beta) != n_resp) {
+      stop(
+        "`beta` has ", ncol(beta), " columns but there are ", n_resp,
+        " response(s); give one column per response, or a vector shared ",
+        "by all.",
+        call. = FALSE
+      )
+    }
+  } else if (length(beta) != ncol(F)) {
     stop(
       "`beta` has length ", length(beta), " but the trend has ", ncol(F),
       " coefficient(s).",
@@ -508,7 +609,7 @@ check_engine_args <- function(C, F, y, folds, beta) {
       call. = FALSE
     )
   }
-  check_beta(beta, F)
+  check_beta(beta, F, ncol(y))
   list(y = y, F = F)
 }
 
