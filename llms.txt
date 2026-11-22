@@ -1,0 +1,225 @@
+# fastkcv
+
+R package · companion to gstat
+
+Fast, exact cross-validation for global kriging
+
+[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) takes
+the same inputs as
+[`gstat::krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+and returns the same output. It factorizes the covariance matrix of the
+observations once, instead of refitting the kriging system for every
+fold, and the results agree with
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+to numerical precision.
+
+[ Get started](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md)
+[ Reference](https://n-c-taylor.github.io/fastkcv/reference/index.md) [
+GitHub](https://github.com/n-c-taylor/fastkcv)
+
+[![R-CMD-check](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml)
+MIT license R / C++
+
+![fastkcv logo](reference/figures/logo.png)
+
+1,500xfaster leave-one-out than
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+at n = 2,000
+
+1factorization for every fold, no refit per fold
+
+11gstat variogram models, nested and anisotropic
+
+20,000observations in about two minutes
+
+A drop-in for krige.cv()Same formula, locations, data, model, nfold and
+beta; the same output columns for data.frame, sf and sp data.
+
+Factorize
+once[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+and
+[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+reuse one factorization for any number of fold designs.
+
+Spatial fold designsRandom, block and k-means folds, and
+[`kcv_metrics()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_metrics.md)
+to compare them: RMSE, bias, z-scores, coverage.
+
+Buffered leave-one-outHold out every observation within a radius of each
+point, for all points or a subset of targets.
+
+Several responses`cbind(z1, z2) ~ 1` or `kcv_run(prepared, y = )`: many
+responses at the same locations from one factorization.
+
+Any covariance
+matrix[`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
+runs the same exact computation from a precomputed covariance matrix.
+
+## Installation
+
+Using `pak`:
+
+`pak::pkg_install("n-c-taylor/fastkcv")`
+
+Copy
+
+Using `remotes`:
+
+``` r
+
+# install.packages("remotes")
+remotes::install_github("n-c-taylor/fastkcv", build_vignettes = TRUE)
+```
+
+The package contains C++ code, so installing from GitHub needs a
+compiler toolchain: Rtools on Windows, the Xcode command line tools on
+macOS.
+
+## Example
+
+``` r
+
+library(fastkcv)
+library(gstat)
+data(meuse, package = "sp")
+v <- vgm(0.59, "Sph", 897, 0.05)
+
+# Leave-one-out, as krige.cv(log(zinc) ~ 1, ~ x + y, meuse, model = v)
+cv <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v)
+kcv_metrics(cv)
+
+# One factorization, several fold designs
+p <- kcv_prepare(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v)
+set.seed(1)
+kcv_metrics(kcv_run(p, folds = fold_random(~ x + y, meuse, k = 10)))
+kcv_metrics(kcv_run(p, folds = fold_blocks(~ x + y, meuse, blocks = 3)))
+kcv_metrics(kcv_run(p, buffer = 300))
+```
+
+## Performance
+
+Ordinary kriging on simulated data, 4-core laptop with OpenBLAS (median
+seconds; from the scripts in `inst/bench/`):
+
+| n | LOO: fastkcv / [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html) | 5-fold: fastkcv / [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html) |
+|---:|:---|:---|
+| 1,000 | 0.06 / 67 (1,100x) | 0.07 / 0.8 (12x) |
+| 2,000 | 0.25 / 368 (1,500x) | 0.29 / 5.7 (19x) |
+| 5,000 | 2.1 / not run | 2.6 / 85 (32x) |
+
+The gain is largest for leave-one-out and smallest for a few large
+folds. [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md)
+handles n = 20,000 in about two minutes.
+
+The vignette ([Get
+started](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md))
+covers the fold designs, buffered leave-one-out, precomputed covariance
+matrices, and the performance and memory notes.
+
+## Scope
+
+Global kriging only: every observation is in the kriging neighborhood.
+Local neighborhoods (`nmax`, `nmin`, `maxdist`), block kriging,
+unbounded variograms, geographic coordinates and re-fitting the
+variogram in each fold are not supported, and give an error. Memory is
+one n x n matrix (8 n^2 bytes, 3.2 GB at n = 20,000), checked before
+anything is allocated.
+
+## Related packages
+
+fastkcv is a companion to gstat, not a fork or a replacement:
+[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) takes
+the inputs of
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+and returns its output, and fitting variograms and kriging new locations
+stay with gstat. It is a separate package for three reasons. The single
+factorization works only for global kriging, while gstat’s engine sets
+up a kriging system for each prediction location, which is what makes
+local neighborhoods (`nmax`, `maxdist`) possible. It needs compiled C++
+code (Rcpp, RcppArmadillo) and a dense n x n matrix (8 n^2 bytes,
+checked up front). And most of the package is a cross-validation toolkit
+rather than a faster
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html):
+buffered leave-one-out, spatial fold builders,
+[`kcv_metrics()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_metrics.md),
+[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+/
+[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+to reuse one factorization, and
+[`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
+for any covariance matrix.
+
+`leaveOneOut.km()` in DiceKriging uses the same closed-form
+leave-one-out algebra, without a nugget term, with tensor-product
+kernels on a design matrix rather than gstat variogram models on spatial
+data, and without k-fold or buffered designs. From the same covariance
+matrix, fastkcv is 1.6 to 4.1 times faster end to end (OpenBLAS) and
+about level on the leave-one-out step alone. blockCV and spatialsample
+build spatial folds for any model but do not fit one; a partition from
+them, such as `folds_ids` from blockCV’s `cv_spatial()`, can be passed
+to `kcv_run(folds = )`.
+
+|  | LOO | k-fold | Buffered LOO | Block / cluster folds | Nugget, gstat models | Input | Exact, no refit per fold |
+|:---|:---|:---|:---|:---|:---|:---|:---|
+| fastkcv | yes | yes | yes | yes | yes | data.frame, `sf`, `sp` | yes |
+| gstat [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html) | yes | yes | no | any fold vector | yes | data.frame, `sf`, `sp` | no (refits) |
+| DiceKriging `leaveOneOut.km()` | yes | no | no | no | no | design matrix | yes |
+| blockCV | NNDM variant | yes | yes | yes | (folds only) | `sf`, `sp` points | (folds only) |
+| spatialsample | yes (`v = Inf`) | yes | yes | yes | (folds only) | `sf` | (folds only) |
+
+## Use of AI tools
+
+This package was developed with the help of an AI coding assistant
+(Anthropic’s Claude Opus 5.5), used for writing and reviewing code,
+tests and documentation. The author directed the work and is responsible
+for the package; its results are checked against
+[`gstat::krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+and independent R implementations by the test suite.
+
+# Package index
+
+## Cross-validation
+
+[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) is
+[`gstat::krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+from one factorization;
+[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+and
+[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+reuse that factorization for any number of fold designs and responses.
+
+- [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) :
+  Fast exact cross-validation for global kriging
+- [`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+  [`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+  : Factorize once, cross-validate many times
+
+## Fold designs
+
+Random, spatial block and k-means folds for `nfold` or `folds`.
+
+- [`fold_random()`](https://n-c-taylor.github.io/fastkcv/reference/folds.md)
+  [`fold_blocks()`](https://n-c-taylor.github.io/fastkcv/reference/folds.md)
+  [`fold_kmeans()`](https://n-c-taylor.github.io/fastkcv/reference/folds.md)
+  : Fold builders for cross-validation
+
+## Summaries
+
+- [`kcv_metrics()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_metrics.md)
+  : Summary statistics of a cross-validation
+
+## Precomputed covariance matrix
+
+The same computation from any covariance matrix.
+
+- [`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
+  [`kcv_engine_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
+  [`kcv_engine_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
+  : Exact kriging cross-validation from a covariance matrix
+
+# Articles
+
+### All vignettes
+
+- [Fast exact cross-validation for global
+  kriging](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md):

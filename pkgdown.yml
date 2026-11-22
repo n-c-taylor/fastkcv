@@ -1,0 +1,9 @@
+pandoc: 3.8.3
+pkgdown: 2.2.1
+pkgdown_sha: ~
+articles:
+  fastkcv: fastkcv.html
+last_built: 2026-11-22T21:21Z
+urls:
+  reference: https://n-c-taylor.github.io/fastkcv/reference
+  article: https://n-c-taylor.github.io/fastkcv/articles
