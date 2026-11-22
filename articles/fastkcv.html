@@ -15,20 +15,7 @@
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><script src="../extra.js"></script><meta property="og:title" content="Fast exact cross-validation for global kriging">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&amp;family=Geist:wght@400;500;600&amp;display=swap">
-<meta name="theme-color" content="#0b1220">
-<script>
-  // Dark unless the visitor picked a theme with the switch.
-  try {
-    if (!localStorage.getItem("theme")) localStorage.setItem("theme", "dark");
-    setTheme(localStorage.getItem("theme"));
-  } catch (e) {
-    document.documentElement.setAttribute("data-bs-theme", "dark");
-  }
-</script>
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Fast exact cross-validation for global kriging">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -55,7 +42,6 @@
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json">
 </form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://n-c-taylor.github.io/" aria-label="Author's website"><span class="fa fa-user"></span></a></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/n-c-taylor/fastkcv/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-lightswitch" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Light switch"><span class="fa fa-sun"></span></button>
@@ -121,7 +107,7 @@ gstat variogram models.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">cv_gstat</span>, <span class="va">cv_fast</span>, tolerance <span class="op">=</span> <span class="fl">1e-10</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">cv_fast</span><span class="op">$</span><span class="va">var1.pred</span> <span class="op">-</span> <span class="va">cv_gstat</span><span class="op">$</span><span class="va">var1.pred</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 6.217249e-15</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 5.329071e-15</span></span></code></pre></div>
 <p>The output has the same kind as the input: a data.frame here, an
 <code>sf</code> object for <code>sf</code> input and a
 <code>SpatialPointsDataFrame</code> for <code>sp</code> input.
@@ -136,7 +122,7 @@ re-estimates the trend in every fold (generalized least squares), and
 <span><span class="va">uk_fast</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv.html">kcv</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">zinc</span><span class="op">)</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">dist</span><span class="op">)</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">y</span>, <span class="va">meuse</span>, model <span class="op">=</span> <span class="va">v</span>,</span>
 <span>  folds <span class="op">=</span> <span class="va">f10</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">uk_fast</span><span class="op">$</span><span class="va">var1.var</span> <span class="op">-</span> <span class="va">uk_gstat</span><span class="op">$</span><span class="va">var1.var</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 6.106227e-16</span></span>
+<span><span class="co">#&gt; [1] 3.608225e-16</span></span>
 <span><span class="va">sk_fast</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv.html">kcv</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">zinc</span><span class="op">)</span> <span class="op">~</span> <span class="fl">1</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">y</span>, <span class="va">meuse</span>, model <span class="op">=</span> <span class="va">v</span>, beta <span class="op">=</span> <span class="fl">5.9</span><span class="op">)</span></span></code></pre></div>
 <p>A scalar <code>nfold = k</code> draws folds with the same call that
 <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> uses, so the same seed gives the same folds in
@@ -319,7 +305,7 @@ reproduces <code><a href="../reference/kcv.html">kcv()</a></code>:</p>
 <span><span class="cn">F</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">meuse</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">e</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv_engine.html">kcv_engine</a></span><span class="op">(</span><span class="va">C</span>, <span class="cn">F</span>, <span class="va">y</span>, folds <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">meuse</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">e</span><span class="op">$</span><span class="va">pred</span> <span class="op">-</span> <span class="va">cv_fast</span><span class="op">$</span><span class="va">var1.pred</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 6.217249e-15</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 5.329071e-15</span></span></code></pre></div>
 <p>The response can be a matrix: each column is cross-validated with the
 same weights, which costs little more than a single column. As an
 example of a covariance outside gstat’s models, observations with known,
@@ -574,7 +560,7 @@ leave-one-out is <code>spatial_buffer_vfold_cv()</code> with
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>© 2026 <a href="https://n-c-taylor.github.io/" class="external-link">Nicholas C. Taylor</a></p>
+  <p>Developed by Nicholas Taylor.</p>
 </div>
 
 <div class="pkgdown-footer-right">

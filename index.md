@@ -1,9 +1,9 @@
 # fastkcv
 
-R package · companion to gstat
+Documentation: <https://n-c-taylor.github.io/fastkcv/>
 
-Fast, exact cross-validation for global kriging
-
+Fast, exact cross-validation for global kriging, as a companion to
+[gstat](https://CRAN.R-project.org/package=gstat).
 [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) takes
 the same inputs as
 [`gstat::krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
@@ -13,55 +13,24 @@ fold, and the results agree with
 [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
 to numerical precision.
 
-[ Get started](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md)
-[ Reference](https://n-c-taylor.github.io/fastkcv/reference/index.md) [
-GitHub](https://github.com/n-c-taylor/fastkcv)
-
-[![R-CMD-check](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml)
-MIT license R / C++
-
-![fastkcv logo](reference/figures/logo.png)
-
-1,500xfaster leave-one-out than
-[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
-at n = 2,000
-
-1factorization for every fold, no refit per fold
-
-11gstat variogram models, nested and anisotropic
-
-20,000observations in about two minutes
-
-A drop-in for krige.cv()Same formula, locations, data, model, nfold and
-beta; the same output columns for data.frame, sf and sp data.
-
-Factorize
-once[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
-and
-[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
-reuse one factorization for any number of fold designs.
-
-Spatial fold designsRandom, block and k-means folds, and
-[`kcv_metrics()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_metrics.md)
-to compare them: RMSE, bias, z-scores, coverage.
-
-Buffered leave-one-outHold out every observation within a radius of each
-point, for all points or a subset of targets.
-
-Several responses`cbind(z1, z2) ~ 1` or `kcv_run(prepared, y = )`: many
-responses at the same locations from one factorization.
-
-Any covariance
-matrix[`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
-runs the same exact computation from a precomputed covariance matrix.
+- Leave-one-out, k-fold and buffered (spatial) leave-one-out
+  cross-validation for simple, ordinary and universal kriging.
+- gstat variogram models `Nug`, `Exp`, `Sph`, `Gau`, `Mat`, `Ste`,
+  `Cir`, `Pen`, `Bes`, `Wav` and `Hol`, nested sums of them and 2D
+  geometric anisotropy. data.frame, `sf` and `sp` data.
+- Random, spatial block and k-means fold builders, and
+  [`kcv_metrics()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_metrics.md)
+  to compare fold designs (RMSE, bias, z-scores, interval coverage).
+- Several responses at the same locations (`cbind(z1, z2) ~ 1`, or
+  `kcv_run(prepared, y = )`) cross-validated from one factorization.
+- [`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+  /
+  [`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+  to factorize once and run many fold schemes;
+  [`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
+  for a precomputed covariance matrix.
 
 ## Installation
-
-Using `pak`:
-
-`pak::pkg_install("n-c-taylor/fastkcv")`
-
-Copy
 
 Using `remotes`:
 
@@ -69,6 +38,14 @@ Using `remotes`:
 
 # install.packages("remotes")
 remotes::install_github("n-c-taylor/fastkcv", build_vignettes = TRUE)
+```
+
+Using `pak` (faster):
+
+``` r
+
+# install.packages("pak")
+pak::pkg_install("n-c-taylor/fastkcv")
 ```
 
 The package contains C++ code, so installing from GitHub needs a
@@ -111,8 +88,8 @@ The gain is largest for leave-one-out and smallest for a few large
 folds. [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md)
 handles n = 20,000 in about two minutes.
 
-The vignette ([Get
-started](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md))
+The vignette
+([`vignette("fastkcv")`](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md))
 covers the fold designs, buffered leave-one-out, precomputed covariance
 matrices, and the performance and memory notes.
 

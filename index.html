@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>fastkcv: Fast Exact Cross-Validation for Global Kriging • fastkcv</title>
+<title>Fast Exact Cross-Validation for Global Kriging • fastkcv</title>
 <!-- favicons --><link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
 <link rel="icon" type="”image/svg+xml”" href="favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -15,25 +15,10 @@
 <link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><script src="extra.js"></script><meta property="og:title" content="fastkcv: Fast Exact Cross-Validation for Global Kriging">
-<meta name="description" content="Exact leave-one-out, k-fold and buffered leave-one-out cross-validation for global kriging from one factorization of the covariance matrix. A companion to gstat: the same inputs and output as krige.cv().
-">
-<meta property="og:description" content="Exact leave-one-out, k-fold and buffered leave-one-out cross-validation for global kriging from one factorization of the covariance matrix. A companion to gstat: the same inputs and output as krige.cv().
-">
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Fast Exact Cross-Validation for Global Kriging">
+<meta name="description" content="Fast, exact leave-one-out, k-fold and buffered leave-one-out cross-validation for global (unique neighborhood) simple, ordinary and universal kriging, computed from a single factorization of the covariance matrix (Dubrule (1983) &lt;doi:10.1007/BF01033232&gt;; Ginsbourger and Schärer (2024) &lt;doi:10.1080/10618600.2024.2353633&gt;). Takes the same inputs as gstat krige.cv() and reproduces its output to numerical precision, with nugget effects, nested and anisotropic variogram models. Includes random, spatial block and k-means fold builders and summary statistics for comparing fold designs.">
+<meta property="og:description" content="Fast, exact leave-one-out, k-fold and buffered leave-one-out cross-validation for global (unique neighborhood) simple, ordinary and universal kriging, computed from a single factorization of the covariance matrix (Dubrule (1983) &lt;doi:10.1007/BF01033232&gt;; Ginsbourger and Schärer (2024) &lt;doi:10.1080/10618600.2024.2353633&gt;). Takes the same inputs as gstat krige.cv() and reproduces its output to numerical precision, with nugget effects, nested and anisotropic variogram models. Includes random, spatial block and k-means fold builders and summary statistics for comparing fold designs.">
 <meta property="og:image" content="https://n-c-taylor.github.io/fastkcv/logo.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&amp;family=Geist:wght@400;500;600&amp;display=swap">
-<meta name="theme-color" content="#0b1220">
-<script>
-  // Dark unless the visitor picked a theme with the switch.
-  try {
-    if (!localStorage.getItem("theme")) localStorage.setItem("theme", "dark");
-    setTheme(localStorage.getItem("theme"));
-  } catch (e) {
-    document.documentElement.setAttribute("data-bs-theme", "dark");
-  }
-</script>
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -60,7 +45,6 @@
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json">
 </form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://n-c-taylor.github.io/" aria-label="Author's website"><span class="fa fa-user"></span></a></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/n-c-taylor/fastkcv/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-lightswitch" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Light switch"><span class="fa fa-sun"></span></button>
@@ -77,80 +61,40 @@
   </div>
 </nav><div class="container template-home">
 <div class="row">
-  <main id="main" class="col-md-9"><div class="hero">
-  <div class="hero-text">
-    <span class="eyebrow">R package · companion to gstat</span>
-    <div class="page-header">
-<img src="logo.png" class="logo" alt=""><h1>fastkcv</h1>
+  <main id="main" class="col-md-9"><div class="section level1">
+<div class="page-header">
+<img src="logo.png" class="logo" alt=""><h1 id="fastkcv-">fastkcv <a class="anchor" aria-label="anchor" href="#fastkcv-"></a>
+</h1>
 </div>
-    <p class="hero-tagline">Fast, exact cross-validation for <span class="accent">global kriging</span></p>
-    <p class="hero-summary"><code><a href="reference/kcv.html">kcv()</a></code> takes the same inputs as <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">gstat::krige.cv()</a></code> and returns the same output. It factorizes the covariance matrix of the observations once, instead of refitting the kriging system for every fold, and the results agree with <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> to numerical precision.</p>
-    <div class="hero-actions">
-      <a class="btn-accent" href="articles/fastkcv.html"><span class="fa fa-rocket"></span> Get started</a>
-      <a class="btn-ghost" href="reference/index.html"><span class="fa fa-book"></span> Reference</a>
-      <a class="external-link btn-ghost" href="https://github.com/n-c-taylor/fastkcv"><span class="fab fa-github"></span> GitHub</a>
-    </div>
-    <div class="hero-links">
-      <a href="https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a>
-      <span class="pill pill-neutral">MIT license</span>
-      <span class="pill">R / C++</span>
-    </div>
-  </div>
-  <div class="hero-photo"><img src="reference/figures/logo.png" alt="fastkcv logo"></div>
-</div>
+<!-- badges: start -->
 
-<div class="stat-strip">
-  <div class="stat">
-<span class="stat-num">1,500x</span><span class="stat-label">faster leave-one-out than <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> at n = 2,000</span>
-</div>
-  <div class="stat">
-<span class="stat-num">1</span><span class="stat-label">factorization for every fold, no refit per fold</span>
-</div>
-  <div class="stat">
-<span class="stat-num">11</span><span class="stat-label">gstat variogram models, nested and anisotropic</span>
-</div>
-  <div class="stat">
-<span class="stat-num">20,000</span><span class="stat-label">observations in about two minutes</span>
-</div>
-</div>
-
-<div class="card-grid">
-  <div class="feature-card">
-<span class="icon-box"><span class="fa fa-right-left"></span></span><span class="card-title">A drop-in for krige.cv()</span><span class="card-text">Same formula, locations, data, model, nfold and beta; the same output columns for data.frame, sf and sp data.</span>
-</div>
-  <div class="feature-card">
-<span class="icon-box"><span class="fa fa-bolt"></span></span><span class="card-title">Factorize once</span><span class="card-text"><code><a href="reference/kcv_prepare.html">kcv_prepare()</a></code> and <code><a href="reference/kcv_prepare.html">kcv_run()</a></code> reuse one factorization for any number of fold designs.</span>
-</div>
-  <div class="feature-card">
-<span class="icon-box"><span class="fa fa-table-cells"></span></span><span class="card-title">Spatial fold designs</span><span class="card-text">Random, block and k-means folds, and <code><a href="reference/kcv_metrics.html">kcv_metrics()</a></code> to compare them: RMSE, bias, z-scores, coverage.</span>
-</div>
-  <div class="feature-card">
-<span class="icon-box"><span class="fa fa-bullseye"></span></span><span class="card-title">Buffered leave-one-out</span><span class="card-text">Hold out every observation within a radius of each point, for all points or a subset of targets.</span>
-</div>
-  <div class="feature-card">
-<span class="icon-box"><span class="fa fa-layer-group"></span></span><span class="card-title">Several responses</span><span class="card-text"><code>cbind(z1, z2) ~ 1</code> or <code>kcv_run(prepared, y = )</code>: many responses at the same locations from one factorization.</span>
-</div>
-  <div class="feature-card">
-<span class="icon-box"><span class="fa fa-table"></span></span><span class="card-title">Any covariance matrix</span><span class="card-text"><code><a href="reference/kcv_engine.html">kcv_engine()</a></code> runs the same exact computation from a precomputed covariance matrix.</span>
-</div>
-</div>
+<p>Documentation: <a href="https://n-c-taylor.github.io/fastkcv/" class="uri">https://n-c-taylor.github.io/fastkcv/</a></p>
+<p>Fast, exact cross-validation for global kriging, as a companion to <a href="https://CRAN.R-project.org/package=gstat" class="external-link">gstat</a>. <code><a href="reference/kcv.html">kcv()</a></code> takes the same inputs as <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">gstat::krige.cv()</a></code> and returns the same output. It factorizes the covariance matrix of the observations once, instead of refitting the kriging system for every fold, and the results agree with <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> to numerical precision.</p>
+<ul>
+<li>Leave-one-out, k-fold and buffered (spatial) leave-one-out cross-validation for simple, ordinary and universal kriging.</li>
+<li>gstat variogram models <code>Nug</code>, <code>Exp</code>, <code>Sph</code>, <code>Gau</code>, <code>Mat</code>, <code>Ste</code>, <code>Cir</code>, <code>Pen</code>, <code>Bes</code>, <code>Wav</code> and <code>Hol</code>, nested sums of them and 2D geometric anisotropy. data.frame, <code>sf</code> and <code>sp</code> data.</li>
+<li>Random, spatial block and k-means fold builders, and <code><a href="reference/kcv_metrics.html">kcv_metrics()</a></code> to compare fold designs (RMSE, bias, z-scores, interval coverage).</li>
+<li>Several responses at the same locations (<code>cbind(z1, z2) ~ 1</code>, or <code>kcv_run(prepared, y = )</code>) cross-validated from one factorization.</li>
+<li>
+<code><a href="reference/kcv_prepare.html">kcv_prepare()</a></code> / <code><a href="reference/kcv_prepare.html">kcv_run()</a></code> to factorize once and run many fold schemes; <code><a href="reference/kcv_engine.html">kcv_engine()</a></code> for a precomputed covariance matrix.</li>
+</ul>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>Using <code>pak</code>:</p>
-<div class="install-box">
-<code>pak::pkg_install("n-c-taylor/fastkcv")</code><button type="button" class="copy-btn" data-copy="pak::pkg_install(&quot;n-c-taylor/fastkcv&quot;)" aria-label="Copy install command"><span class="fa fa-copy"></span><span>Copy</span></button>
-</div>
 <p>Using <code>remotes</code>:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"n-c-taylor/fastkcv"</span>, build_vignettes <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
+<p>Using <code>pak</code> (faster):</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pkg_install.html" class="external-link">pkg_install</a></span><span class="op">(</span><span class="st">"n-c-taylor/fastkcv"</span><span class="op">)</span></span></code></pre></div>
 <p>The package contains C++ code, so installing from GitHub needs a compiler toolchain: Rtools on Windows, the Xcode command line tools on macOS.</p>
 </div>
 <div class="section level2">
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://n-c-taylor.github.io/fastkcv/">fastkcv</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/r-spatial/gstat/" class="external-link">gstat</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">meuse</span>, package <span class="op">=</span> <span class="st">"sp"</span><span class="op">)</span></span>
@@ -198,7 +142,7 @@
 </tbody>
 </table>
 <p>The gain is largest for leave-one-out and smallest for a few large folds. <code><a href="reference/kcv.html">kcv()</a></code> handles n = 20,000 in about two minutes.</p>
-<p>The vignette (<a href="articles/fastkcv.html">Get started</a>) covers the fold designs, buffered leave-one-out, precomputed covariance matrices, and the performance and memory notes.</p>
+<p>The vignette (<code><a href="articles/fastkcv.html">vignette("fastkcv")</a></code>) covers the fold designs, buffered leave-one-out, precomputed covariance matrices, and the performance and memory notes.</p>
 </div>
 <div class="section level2">
 <h2 id="scope">Scope<a class="anchor" aria-label="anchor" href="#scope"></a>
@@ -295,13 +239,51 @@
 </h2>
 <p>This package was developed with the help of an AI coding assistant (Anthropic’s Claude Opus 5.5), used for writing and reviewing code, tests and documentation. The author directed the work and is responsible for the package; its results are checked against <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">gstat::krige.cv()</a></code> and independent R implementations by the test suite.</p>
 </div>
+</div>
+  </main><aside class="col-md-3"><div class="links">
+<h2 data-toc-skip>Links</h2>
+<ul class="list-unstyled">
+<li><a href="https://github.com/n-c-taylor/fastkcv/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/n-c-taylor/fastkcv/issues" class="external-link">Report a bug</a></li>
+</ul>
+</div>
 
-  </main><aside class="col-md-3"></aside>
+<div class="license">
+<h2 data-toc-skip>License</h2>
+<ul class="list-unstyled">
+<li><a href="LICENSE.html">Full license</a></li>
+<li><small><a href="https://opensource.org/licenses/mit-license.php" class="external-link">MIT</a> + file <a href="LICENSE-text.html">LICENSE</a></small></li>
+</ul>
+</div>
+
+
+<div class="citation">
+<h2 data-toc-skip>Citation</h2>
+<ul class="list-unstyled">
+<li><a href="authors.html#citation">Citing fastkcv</a></li>
+</ul>
+</div>
+
+<div class="developers">
+<h2 data-toc-skip>Developers</h2>
+<ul class="list-unstyled">
+<li>Nicholas Taylor <br><small class="roles"> Author, maintainer </small>   </li>
+</ul>
+</div>
+
+<div class="dev-status">
+<h2 data-toc-skip>Dev status</h2>
+<ul class="list-unstyled">
+<li><a href="https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+</ul>
+</div>
+
+  </aside>
 </div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>© 2026 <a href="https://n-c-taylor.github.io/" class="external-link">Nicholas C. Taylor</a></p>
+  <p>Developed by Nicholas Taylor.</p>
 </div>
 
 <div class="pkgdown-footer-right">
