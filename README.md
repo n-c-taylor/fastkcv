@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="man/figures/logo.png" height="278" alt="fastkcv logo" />
-</p>
-
-# fastkcv
+# fastkcv <img src="man/figures/logo.png" align="right" height="139" alt="fastkcv logo" />
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml)

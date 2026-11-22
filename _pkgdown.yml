@@ -1,66 +1,12 @@
 url: https://n-c-taylor.github.io/fastkcv/
 
-# Styled after https://n-c-taylor.github.io/ (dark by default, light via the
-# switch). Colors and components: pkgdown/extra.scss; home page:
-# pkgdown/index.md (kept in step with README.md by hand).
 template:
   bootstrap: 5
   light-switch: true
-  theme: arrow-light
-  theme-dark: a11y-dark
   # The default (mathml) left the Rd \eqn{} as raw \( ... \) TeX.
   math-rendering: katex
   bslib:
-    bg: "#f7fafc"
-    fg: "#0b1220"
     primary: "#0e7490"
-    link-color: "#0e7490"
-    link-hover-color: "#155e75"
-    body-bg-dark: "#0b1220"
-    body-color-dark: "#e6edf6"
-    link-color-dark: "#22d3ee"
-    link-hover-color-dark: "#67e8f9"
-    code-color-dark: "#67e8f9"
-    border-color-dark: "rgba(255, 255, 255, 0.08)"
-    base_font: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
-    heading_font: "'Bricolage Grotesque', Geist, system-ui, sans-serif"
-    code_font: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
-    headings-font-weight: 600
-    line-height-base: 1.65
-    border-radius: 10px
-  includes:
-    in_header: |
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&display=swap">
-      <meta name="theme-color" content="#0b1220">
-      <script>
-        // Dark unless the visitor picked a theme with the switch.
-        try {
-          if (!localStorage.getItem("theme")) localStorage.setItem("theme", "dark");
-          setTheme(localStorage.getItem("theme"));
-        } catch (e) {
-          document.documentElement.setAttribute("data-bs-theme", "dark");
-        }
-      </script>
-
-home:
-  title: "fastkcv: Fast Exact Cross-Validation for Global Kriging"
-  description: >
-    Exact leave-one-out, k-fold and buffered leave-one-out cross-validation
-    for global kriging from one factorization of the covariance matrix. A
-    companion to gstat: the same inputs and output as krige.cv().
-  sidebar: false
-
-navbar:
-  structure:
-    left: [intro, reference, news]
-    right: [search, author, github, lightswitch]
-  components:
-    author:
-      icon: fa-user
-      href: https://n-c-taylor.github.io/
-      aria-label: Author's website
 
 reference:
   - title: Cross-validation
@@ -82,10 +28,3 @@ reference:
     desc: The same computation from any covariance matrix.
     contents:
       - kcv_engine
-
-footer:
-  structure:
-    left: [copyright]
-    right: [built_with]
-  components:
-    copyright: "© 2026 [Nicholas C. Taylor](https://n-c-taylor.github.io/)"
