@@ -39,7 +39,7 @@ head(cv_fast)
 all.equal(cv_gstat, cv_fast, tolerance = 1e-10)
 #> [1] TRUE
 max(abs(cv_fast$var1.pred - cv_gstat$var1.pred))
-#> [1] 5.329071e-15
+#> [1] 6.217249e-15
 ```
 
 The output has the same kind as the input: a data.frame here, an `sf`
@@ -57,7 +57,7 @@ uk_gstat <- krige.cv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v,
 uk_fast <- kcv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v,
   folds = f10)
 max(abs(uk_fast$var1.var - uk_gstat$var1.var))
-#> [1] 3.608225e-16
+#> [1] 6.106227e-16
 sk_fast <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, beta = 5.9)
 ```
 
@@ -271,7 +271,7 @@ y <- log(meuse$zinc)
 F <- matrix(1, nrow(meuse), 1)
 e <- kcv_engine(C, F, y, folds = seq_len(nrow(meuse)))
 max(abs(e$pred - cv_fast$var1.pred))
-#> [1] 5.329071e-15
+#> [1] 6.217249e-15
 ```
 
 The response can be a matrix: each column is cross-validated with the

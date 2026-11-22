@@ -1,7 +1,5 @@
 # fastkcv
 
-Documentation: <https://n-c-taylor.github.io/fastkcv/>
-
 Fast, exact cross-validation for global kriging, as a companion to
 [gstat](https://CRAN.R-project.org/package=gstat).
 [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) takes
