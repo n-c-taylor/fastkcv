@@ -4,8 +4,6 @@
 [![R-CMD-check](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/n-c-taylor/fastkcv/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-Documentation: <https://n-c-taylor.github.io/fastkcv/>
-
 Fast, exact cross-validation for global kriging, as a companion to
 [gstat](https://CRAN.R-project.org/package=gstat). `kcv()` takes the same
 inputs as `gstat::krige.cv()` and returns the same output. It factorizes the
