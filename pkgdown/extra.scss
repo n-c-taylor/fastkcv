@@ -223,6 +223,9 @@ pre code,
   border-radius: 8px;
 }
 
+// KaTeX (Rd \eqn{}) defaults to 1.21em, large next to Geist.
+.katex { font-size: 1.08em; }
+
 /* ---------- Tables ---------- */
 .table {
   --bs-table-bg: transparent;

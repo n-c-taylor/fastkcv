@@ -8,6 +8,8 @@ template:
   light-switch: true
   theme: arrow-light
   theme-dark: a11y-dark
+  # The default (mathml) left the Rd \eqn{} as raw \( ... \) TeX.
+  math-rendering: katex
   bslib:
     bg: "#f7fafc"
     fg: "#0b1220"
