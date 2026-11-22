@@ -13,6 +13,7 @@ Fast, exact leave-one-out, k-fold and buffered leave-one-out cross-validation fo
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://n-c-taylor.github.io/fastkcv/}
   \item \url{https://github.com/n-c-taylor/fastkcv}
   \item Report bugs at \url{https://github.com/n-c-taylor/fastkcv/issues}
 }

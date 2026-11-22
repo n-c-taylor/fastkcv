@@ -13,7 +13,7 @@ Description: Fast, exact leave-one-out, k-fold and buffered leave-one-out
     variogram models. Includes random, spatial block and k-means fold
     builders and summary statistics for comparing fold designs.
 License: MIT + file LICENSE
-URL: https://github.com/n-c-taylor/fastkcv
+URL: https://n-c-taylor.github.io/fastkcv/, https://github.com/n-c-taylor/fastkcv
 BugReports: https://github.com/n-c-taylor/fastkcv/issues
 Config/roxygen2/version: 8.1.1
 Encoding: UTF-8

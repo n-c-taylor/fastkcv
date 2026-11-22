@@ -9,3 +9,6 @@
 ^man/figures/social-preview\.png$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
