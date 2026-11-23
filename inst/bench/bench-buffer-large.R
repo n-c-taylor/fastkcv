@@ -22,7 +22,8 @@
 
 source(file.path("inst", "bench", "common.R"))
 
-n <- 20000
+# A smoke run (FASTKCV_BENCH_NS) uses its largest n instead.
+n <- max(bench_ns(20000))
 path <- file.path(cache_dir, sprintf("prepared-%d.rds", n))
 d <- sim_data(n)
 if (!file.exists(path)) {

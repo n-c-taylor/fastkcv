@@ -92,3 +92,21 @@ test_that("kcv_engine keeps the dimnames of a matrix y", {
   res <- kcv_engine(s$C, s$F_ok, Y, rep(1:4, 5))
   expect_identical(dimnames(res$pred), dimnames(Y))
 })
+
+test_that("the Cholesky refit oracle matches kcv_reference and kcv_engine", {
+  s <- sim_setup()
+  for (folds in engine_folds(s$n)[c("k7", "uneven", "big")]) {
+    for (args in list(
+      list(F = s$F_ok), list(F = s$F_uk),
+      list(F = s$F_uk, beta = c(2, 0.001, 0.5))
+    )) {
+      a <- kcv_refit_chol(s$C, args$F, s$y, folds, beta = args$beta)
+      r <- kcv_reference(s$C, args$F, s$y, folds, beta = args$beta)
+      e <- kcv_engine(s$C, args$F, s$y, folds, beta = args$beta)
+      expect_close(a$pred, r$pred)
+      expect_close(a$var, r$var)
+      expect_close(a$pred, e$pred)
+      expect_close(a$var, e$var)
+    }
+  }
+})

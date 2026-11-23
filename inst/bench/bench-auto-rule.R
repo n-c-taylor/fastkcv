@@ -7,8 +7,12 @@
 # points path runs as matrix products, the pairs path as dot products.
 #
 # Grid: n in {1000, 2000, 5000, 10000} and radii giving a mean hold-out
-# size m of about 5, 20, 50, 150 and 500 on [0, 1000]^2. Runs with n m > 1e6
-# use 500 random targets (seed 1) instead of all points. Both strategies are
+# size m of about 5, 20, 50, 150 and 500 on [0, 1000]^2 for uniform points
+# (sim_data()). A clustered design (20 clusters of normal spread 30 around
+# uniform centers, plus 20% uniform background points; seed 2000 + n) uses
+# the same radii: there m differs by orders of magnitude between points in
+# a cluster and background points. Runs with n m > 1e6 use 500 random
+# targets (seed 1) instead of all points. Both strategies are
 # forced and timed; the costs are recomputed here in R exactly as in C++,
 # and auto's choice is cost_pairs < cost_points (checked against the C++
 # choice on the cheaper runs).
@@ -19,11 +23,20 @@
 
 source(file.path("inst", "bench", "common.R"))
 
-ns <- c(1000, 2000, 5000, 10000)
-if (nzchar(Sys.getenv("FASTKCV_BENCH_NS"))) {
-  ns <- as.numeric(strsplit(Sys.getenv("FASTKCV_BENCH_NS"), ",")[[1]])
-}
+ns <- bench_ns(c(1000, 2000, 5000, 10000))
 ms <- c(5, 20, 50, 150, 500)
+
+# Clustered locations; the response does not affect the timings.
+clustered_data <- function(n, seed = 2000 + n) {
+  withr::with_seed(seed, {
+    n_bg <- round(0.2 * n)
+    centers <- matrix(stats::runif(40, 100, 900), ncol = 2)
+    id <- sample(20, n - n_bg, replace = TRUE)
+    xy <- rbind(centers[id, ] + matrix(stats::rnorm(2 * (n - n_bg), 0, 30),
+      ncol = 2), matrix(stats::runif(2 * n_bg, 0, 1000), ncol = 2))
+    data.frame(x = xy[, 1], y = xy[, 2], z = stats::rnorm(n))
+  })
+}
 
 # Hold-out sets (sorted), as in run_buffer_cpp().
 sets_of <- function(coords, r, targets) {
@@ -65,12 +78,12 @@ rule_costs <- function(coords, r, targets) {
     cost_pairs <- cost_pairs + sum(n - k + 1)
   }
   list(cost_points = cost_points, cost_pairs = cost_pairs, pairs = pairs,
-    mean_m = mean(m))
+    mean_m = mean(m), max_m = max(m))
 }
 
 rows <- list()
-for (n in ns) {
-  d <- sim_data(n)
+for (design in c("uniform", "clustered")) for (n in ns) {
+  d <- if (design == "uniform") sim_data(n) else clustered_data(n)
   coords <- as.matrix(d[, c("x", "y")])
   p <- kcv_prepare(z ~ 1, ~ x + y, d, model = sim_model())
   y <- p$inp$y
@@ -78,7 +91,8 @@ for (n in ns) {
     r <- round(sqrt(m * 1e6 / (pi * n)), 1)
     tg <- if (n * m > 1e6) withr::with_seed(1, sort(sample(n, 500))) else NULL
     targets <- if (is.null(tg)) seq_len(n) else tg
-    message(sprintf("n = %d, r = %g, targets = %d", n, r, length(targets)))
+    message(sprintf("%s, n = %d, r = %g, targets = %d", design, n, r,
+      length(targets)))
     cs <- rule_costs(coords, r, targets)
     tpa <- time_expr(a <- fastkcv:::run_buffer_prepared(p, y, r, tg,
       method = "pairs"), quick = 1)
@@ -91,8 +105,8 @@ for (n in ns) {
       NA_character_
     }
     rows[[length(rows) + 1]] <- data.frame(
-      n = n, target_m = m, radius = r, n_targets = length(targets),
-      mean_m = cs$mean_m, pairs = cs$pairs, cost_pairs = cs$cost_pairs,
+      design = design, n = n, target_m = m, radius = r, n_targets = length(targets),
+      mean_m = cs$mean_m, max_m = cs$max_m, pairs = cs$pairs, cost_pairs = cs$cost_pairs,
       cost_points = cs$cost_points, pairs_s = tpa$time, points_s = tpo$time,
       auto = auto_r, auto_cpp = auto_cpp,
       faster = if (tpa$time < tpo$time) "pairs" else "points",

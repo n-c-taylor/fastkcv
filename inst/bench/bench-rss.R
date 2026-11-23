@@ -17,10 +17,7 @@
 
 source(file.path("inst", "bench", "common.R"))
 
-ns <- c(1000, 2000, 5000, 10000, 20000)
-if (nzchar(Sys.getenv("FASTKCV_BENCH_NS"))) {
-  ns <- as.numeric(strsplit(Sys.getenv("FASTKCV_BENCH_NS"), ",")[[1]])
-}
+ns <- bench_ns(c(1000, 2000, 5000, 10000, 20000))
 max_n_ref <- 10000
 
 # Competitors only where they finish in reasonable time and memory.

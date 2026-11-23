@@ -1,0 +1,53 @@
+# Runs every benchmark script in inst/bench/ at tiny sizes, so that the
+# scripts keep working as the package changes. The timings mean nothing;
+# results go to inst/bench/cache/smoke/, not to the committed results.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+name: bench-smoke.yaml
+
+permissions: read-all
+
+jobs:
+  bench-smoke:
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      FASTKCV_BENCH_NS: "250,500"
+      FASTKCV_BENCH_CAP: "5"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install GNU time
+        run: sudo apt-get update && sudo apt-get install -y time
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::DiceKriging
+            any::spmodel
+            any::RhpcBLASctl
+            any::bench
+            any::knitr
+            local::.
+          needs: bench
+
+      - name: Run the benchmark scripts
+        run: |
+          R CMD INSTALL --preclean .
+          status=0
+          for f in inst/bench/bench-*.R; do
+            echo "::group::$f"
+            Rscript "$f" || { echo "::error::$f failed"; status=1; }
+            echo "::endgroup::"
+          done
+          Rscript inst/bench/summarize.R
+          exit $status

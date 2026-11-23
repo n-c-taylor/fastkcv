@@ -15,8 +15,9 @@
 #   R_LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/blas:/usr/lib/x86_64-linux-gnu/lapack:/usr/lib/R/lib:/usr/lib/x86_64-linux-gnu
 # inst/bench/run-all.sh runs every script under both.
 #
-# Results go to inst/bench/results/<script>-<blas>.csv (and .rds);
-# inst/bench/summarize.R turns them into the summary tables. Simulated data
+# Results go to inst/bench/results/<script>-<blas>.csv, with the session
+# of each script in results/session-<blas>.csv; inst/bench/summarize.R
+# turns them into the summary tables. Simulated data
 # sets are cached in inst/bench/cache/ (not tracked), so both BLAS runs use
 # identical data.
 
@@ -82,6 +83,14 @@ sim_data <- function(n, seed = 1000 + n, model = sim_model()) {
   d
 }
 
+# The test oracles (tests/testthat/helper-oracles.R), in an environment
+# whose parent is the package namespace, as testthat sources them.
+oracles <- local({
+  e <- new.env(parent = asNamespace("fastkcv"))
+  sys.source(file.path("tests", "testthat", "helper-oracles.R"), envir = e)
+  e
+})
+
 meuse_data <- function() {
   e <- new.env()
   utils::data("meuse", package = "sp", envir = e)
@@ -90,15 +99,23 @@ meuse_data <- function() {
 
 # The pure-R pipelines that the competitors stand for: the covariance from
 # gstat::variogramLine() and either the explicit-Q engine (kcv_engine_r) or
-# the per-fold refit with solve() (kcv_reference).
+# the per-fold refit with solve() (kcv_reference); and the competent
+# per-fold refit (kcv_refit_chol: one Cholesky factorization per fold and
+# one multi-right-hand-side solve), with the covariance from fastkcv's C++
+# builder so that only the refit itself is compared.
 kcv_r <- function(formula, locations, data, model, folds,
-                  engine = c("engine_r", "reference")) {
+                  engine = c("engine_r", "reference", "refit")) {
   engine <- match.arg(engine)
   inp <- fastkcv:::parse_inputs(formula, locations, data)
-  C <- fastkcv:::covariance_matrix_r(model, inp$coords)
+  C <- if (engine == "refit") {
+    fastkcv:::covariance_matrix(model, inp$coords)
+  } else {
+    fastkcv:::covariance_matrix_r(model, inp$coords)
+  }
   f <- switch(engine,
     engine_r = fastkcv:::kcv_engine_r,
-    reference = fastkcv:::kcv_reference
+    reference = fastkcv:::kcv_reference,
+    refit = oracles$kcv_refit_chol
   )
   fastkcv:::build_output(inp, f(C, inp$F, inp$y, folds))
 }
@@ -144,13 +161,30 @@ predict_time <- function(hist, n, max_power) {
   b$time * (n / b$n)^power
 }
 
+# Writes results/<name>-<blas>.csv and records the session (R, package and
+# BLAS versions, date) as the row `name` of results/session-<blas>.csv. A
+# smoke run (FASTKCV_BENCH_NS set) writes to cache/smoke/ instead, so the
+# committed results are never overwritten by it.
 write_results <- function(df, name) {
   tag <- blas_tag()
   df$blas <- tag
-  base <- file.path(results_dir, sprintf("%s-%s", name, tag))
-  utils::write.csv(df, paste0(base, ".csv"), row.names = FALSE)
-  saveRDS(list(results = df, session = session_stamp()), paste0(base, ".rds"))
-  message("wrote ", base, ".csv")
+  dir <- if (nzchar(Sys.getenv("FASTKCV_BENCH_NS"))) {
+    file.path(cache_dir, "smoke")
+  } else {
+    results_dir
+  }
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+  path <- file.path(dir, sprintf("%s-%s.csv", name, tag))
+  utils::write.csv(df, path, row.names = FALSE)
+  spath <- file.path(dir, sprintf("session-%s.csv", tag))
+  ses <- cbind(script = name, session_stamp())
+  if (file.exists(spath)) {
+    old <- utils::read.csv(spath, stringsAsFactors = FALSE,
+      colClasses = "character")
+    ses <- rbind(old[old$script != name, names(ses), drop = FALSE], ses)
+  }
+  utils::write.csv(ses[order(ses$script), ], spath, row.names = FALSE)
+  message("wrote ", path)
   invisible(df)
 }
 

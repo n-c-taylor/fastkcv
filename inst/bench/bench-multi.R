@@ -15,12 +15,8 @@
 
 source(file.path("inst", "bench", "common.R"))
 
-cap <- as.numeric(Sys.getenv("FASTKCV_BENCH_CAP", "600"))
-ns <- c(1000, 5000)
-# Smoke test: FASTKCV_BENCH_NS="250,500" FASTKCV_BENCH_CAP=5
-if (nzchar(Sys.getenv("FASTKCV_BENCH_NS"))) {
-  ns <- as.numeric(strsplit(Sys.getenv("FASTKCV_BENCH_NS"), ",")[[1]])
-}
+cap <- bench_cap()
+ns <- bench_ns(c(1000, 5000))
 Ts <- c(1, 10, 100)
 model <- sim_model()
 

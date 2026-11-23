@@ -1,11 +1,13 @@
 # Leave-one-out and k-fold cross-validation (global ordinary kriging):
 # fastkcv vs the pure-R explicit-Q engine (kcv_engine_r), the naive per-fold
-# refit (kcv_reference) and gstat::krige.cv().
+# refit with solve() (kcv_reference), a competent per-fold refit (refit:
+# one Cholesky factorization of the remaining data per fold and one
+# multi-right-hand-side solve) and gstat::krige.cv().
 #
 # n in {250, 500, 1000, 2000, 5000, 10000} (simulated, fixed seeds) plus
 # meuse (n = 155, OK and UK); fold schemes: LOO, random k-fold (k = 25, 10,
-# 5; fold_random(), the same draw as krige.cv(nfold = k)) and spatial block
-# folds (a 10 x 10 grid of blocks grouped at random into k folds,
+# 5, 3, 2; fold_random(), the same draw as krige.cv(nfold = k)) and spatial
+# block folds (a 10 x 10 grid of blocks grouped at random into k folds,
 # fold_blocks(blocks = 10, k = k)).
 #
 # fastkcv is timed in its two stages: kcv_prepare() once per data set
@@ -20,13 +22,9 @@
 
 source(file.path("inst", "bench", "common.R"))
 
-cap <- as.numeric(Sys.getenv("FASTKCV_BENCH_CAP", "600"))
-ns <- c(250, 500, 1000, 2000, 5000, 10000)
-# Smoke test: FASTKCV_BENCH_NS="250,500" FASTKCV_BENCH_CAP=5
-if (nzchar(Sys.getenv("FASTKCV_BENCH_NS"))) {
-  ns <- as.numeric(strsplit(Sys.getenv("FASTKCV_BENCH_NS"), ",")[[1]])
-}
-ks <- c(25, 10, 5)
+cap <- bench_cap()
+ns <- bench_ns(c(250, 500, 1000, 2000, 5000, 10000))
+ks <- c(25, 10, 5, 3, 2)
 
 datasets <- c(
   list(
@@ -57,6 +55,7 @@ schemes <- function(d) {
 powers <- list(
   engine_r = c(LOO = 3, random = 3, blocks = 3),
   reference = c(LOO = 4, random = 3, blocks = 3),
+  refit = c(LOO = 4, random = 3, blocks = 3),
   krige.cv = c(LOO = 4, random = 3, blocks = 3)
 )
 
@@ -83,7 +82,7 @@ for (ds in datasets) {
       run_s = tr$time, mem_bytes = tp$mem + tr$mem, iterations = tr$iter,
       predicted_s = NA_real_, max_abs_diff = NA_real_)
 
-    for (eng in c("engine_r", "reference", "krige.cv")) {
+    for (eng in c("engine_r", "reference", "refit", "krige.cv")) {
       key <- paste(eng, s$type, if (s$type == "LOO") 0 else s$k)
       pred <- if (ds$name == "sim") {
         predict_time(last[[key]], n, powers[[eng]][[s$type]])
@@ -102,6 +101,8 @@ for (ds in datasets) {
           folds, "engine_r"), env),
         reference = time_expr(ref <- kcv_r(ds$formula, ~ x + y, d, ds$model,
           folds, "reference"), env),
+        refit = time_expr(ref <- kcv_r(ds$formula, ~ x + y, d, ds$model,
+          folds, "refit"), env),
         krige.cv = time_expr(ref <- krige.cv(ds$formula, ~ x + y, d,
           model = ds$model, nfold = folds, verbose = FALSE), env)
       )
