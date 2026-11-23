@@ -125,8 +125,9 @@ folds); or a vector of length <code>n</code> of fold identifiers.</p></dd>
 
 
 <dt id="arg-folds">folds<a class="anchor" aria-label="anchor" href="#arg-folds"></a></dt>
-<dd><p>Optional vector of length <code>n</code> of fold identifiers. Takes
-precedence over <code>nfold</code>.</p></dd>
+<dd><p>Optional vector of length <code>n</code> of fold identifiers, as an
+alternative to a vector <code>nfold</code>. Giving both <code>nfold</code> and <code>folds</code> is an
+error.</p></dd>
 
 
 <dt id="arg-buffer">buffer<a class="anchor" aria-label="anchor" href="#arg-buffer"></a></dt>
@@ -169,8 +170,8 @@ observation locations. See "Several responses" in <code><a href="kcv.html">kcv()
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="kcv_engine.html">kcv_engine_prepare()</a></code> for a precomputed covariance matrix; the
-"Performance" section of <code><a href="kcv.html">kcv()</a></code>.</p></div>
+    <div class="dont-index"><p><code><a href="kcv_engine.html">kcv_engine_prepare()</a></code> for a precomputed covariance matrix;
+<code><a href="../articles/fastkcv.html">vignette("fastkcv")</a></code> for timings.</p></div>
     </div>
 
     <div class="section level2">
@@ -180,6 +181,7 @@ observation locations. See "Several responses" in <code><a href="kcv.html">kcv()
 <span class="r-in"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">kcv_prepare</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">zinc</span><span class="op">)</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">dist</span><span class="op">)</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">y</span>, <span class="va">meuse</span>, model <span class="op">=</span> <span class="va">v</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">p</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;kcv_prepared&gt; universal kriging, n = 155, p = 2, 187.7 Kb</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Estimated reciprocal condition number of C: 0.0051</span>
 <span class="r-in"><span><span class="va">loo</span> <span class="op">&lt;-</span> <span class="fu">kcv_run</span><span class="op">(</span><span class="va">p</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">rmse_10fold</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">replicate</a></span><span class="op">(</span><span class="fl">5</span>, <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu">kcv_run</span><span class="op">(</span><span class="va">p</span>, nfold <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">$</span><span class="va">residual</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></span>

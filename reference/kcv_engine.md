@@ -90,6 +90,18 @@ it with `options(fastkcv.max_gb = )` on machines with enough memory. A
 prepared object keeps its \\n \times n\\ factor (\\8 n^2\\ bytes) for as
 long as it exists.
 
+## Trend checks
+
+Ordinary and universal kriging need a trend matrix `F` of full column
+rank, checked once before the factorization with a pivoted QR
+decomposition at R's default tolerance (`qr(F)$rank`, tolerance 1e-7).
+Each fold must also leave the trend identifiable: with \\U\\ an
+orthonormal basis of the columns of `F`, a fold \\I\\ is accepted when
+the smallest eigenvalue of \\U\_{-I}' U\_{-I}\\ (the rows outside the
+fold) is at least \\10^{-12}\\, that is, its smallest singular value is
+at least \\10^{-6}\\. This per-fold criterion is the same for every fold
+scheme and for buffered leave-one-out.
+
 ## See also
 
 [`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)

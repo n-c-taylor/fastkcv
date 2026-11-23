@@ -107,7 +107,7 @@ gstat variogram models.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">cv_gstat</span>, <span class="va">cv_fast</span>, tolerance <span class="op">=</span> <span class="fl">1e-10</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">cv_fast</span><span class="op">$</span><span class="va">var1.pred</span> <span class="op">-</span> <span class="va">cv_gstat</span><span class="op">$</span><span class="va">var1.pred</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 6.217249e-15</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 5.329071e-15</span></span></code></pre></div>
 <p>The output has the same kind as the input: a data.frame here, an
 <code>sf</code> object for <code>sf</code> input and a
 <code>SpatialPointsDataFrame</code> for <code>sp</code> input.
@@ -122,7 +122,7 @@ re-estimates the trend in every fold (generalized least squares), and
 <span><span class="va">uk_fast</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv.html">kcv</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">zinc</span><span class="op">)</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">dist</span><span class="op">)</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">y</span>, <span class="va">meuse</span>, model <span class="op">=</span> <span class="va">v</span>,</span>
 <span>  folds <span class="op">=</span> <span class="va">f10</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">uk_fast</span><span class="op">$</span><span class="va">var1.var</span> <span class="op">-</span> <span class="va">uk_gstat</span><span class="op">$</span><span class="va">var1.var</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 6.106227e-16</span></span>
+<span><span class="co">#&gt; [1] 3.608225e-16</span></span>
 <span><span class="va">sk_fast</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv.html">kcv</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">zinc</span><span class="op">)</span> <span class="op">~</span> <span class="fl">1</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">y</span>, <span class="va">meuse</span>, model <span class="op">=</span> <span class="va">v</span>, beta <span class="op">=</span> <span class="fl">5.9</span><span class="op">)</span></span></code></pre></div>
 <p>A scalar <code>nfold = k</code> draws folds with the same call that
 <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> uses, so the same seed gives the same folds in
@@ -132,6 +132,21 @@ both packages. <code><a href="../reference/folds.html">fold_random()</a></code> 
 (such as <code>Lin</code> or <code>Pow</code>) are not supported and
 raise an error. So do geographic coordinates and duplicate
 locations.</p>
+<p>The agreement with <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> holds while the covariance
+matrix is reasonably conditioned. A very smooth model without a nugget
+(a Gaussian model with a long range, say) can make it nearly singular,
+and then both packages lose accuracy. The factorization estimates the
+reciprocal condition number of the matrix (shown when a
+<code><a href="../reference/kcv_prepare.html">kcv_prepare()</a></code> object is printed, below) and
+<code><a href="../reference/kcv.html">kcv()</a></code> warns when it is below 1e-13
+(<code>options(fastkcv.rcond_warn = )</code>). Against a
+quadruple-precision computation of the same cross-validation (Gaussian
+and Stein models, n = 100 and 200, script
+<code>inst/bench/bench-conditioning.R</code>), fastkcv’s largest error
+in <code>var1.pred</code> was at most 1.2e-5 of the leave-one-out RMSE
+above that threshold, 2e-5 to 1.4e-3 between 1e-14 and 1e-13, and up to
+10 times the RMSE below 1e-14, with <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> of similar
+accuracy throughout. A small nugget restores the accuracy.</p>
 </div>
 <div class="section level2">
 <h2 id="factorize-once-cross-validate-many-times">Factorize once, cross-validate many times<a class="anchor" aria-label="anchor" href="#factorize-once-cross-validate-many-times"></a>
@@ -145,6 +160,7 @@ cost. <code>kcv(...)</code> is the same as
 <code class="sourceCode R"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv_prepare.html">kcv_prepare</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">zinc</span><span class="op">)</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">dist</span><span class="op">)</span>, <span class="op">~</span> <span class="va">x</span> <span class="op">+</span> <span class="va">y</span>, <span class="va">meuse</span>, model <span class="op">=</span> <span class="va">v</span><span class="op">)</span></span>
 <span><span class="va">p</span></span>
 <span><span class="co">#&gt; &lt;kcv_prepared&gt; universal kriging, n = 155, p = 2, 187.7 Kb</span></span>
+<span><span class="co">#&gt; Estimated reciprocal condition number of C: 0.0051</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">rmse</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">replicate</a></span><span class="op">(</span><span class="fl">20</span>, <span class="fu"><a href="../reference/kcv_metrics.html">kcv_metrics</a></span><span class="op">(</span><span class="fu"><a href="../reference/kcv_prepare.html">kcv_run</a></span><span class="op">(</span><span class="va">p</span>, nfold <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="va">rmse</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">rmse</span><span class="op">)</span></span>
@@ -305,7 +321,7 @@ reproduces <code><a href="../reference/kcv.html">kcv()</a></code>:</p>
 <span><span class="cn">F</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">meuse</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">e</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/kcv_engine.html">kcv_engine</a></span><span class="op">(</span><span class="va">C</span>, <span class="cn">F</span>, <span class="va">y</span>, folds <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">meuse</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">e</span><span class="op">$</span><span class="va">pred</span> <span class="op">-</span> <span class="va">cv_fast</span><span class="op">$</span><span class="va">var1.pred</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 6.217249e-15</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 5.329071e-15</span></span></code></pre></div>
 <p>The response can be a matrix: each column is cross-validated with the
 same weights, which costs little more than a single column. As an
 example of a covariance outside gstat’s models, observations with known,
@@ -390,32 +406,48 @@ fifth of it).</p>
 local neighborhood (<code>nmax</code>) solves a different, approximate
 kriging system of fixed size per prediction, so its time grows about
 linearly in n. For 10-fold cross-validation with <code>nmax = 50</code>
-on the same simulated data it catches up with fastkcv at about n = 2,500
-(OpenBLAS, 4 threads), at n = 1,500 to 2,000 with the default 8 OpenBLAS
-threads, and below n = 1,000 with the reference BLAS. Its time also
-grows with the number of folds: local leave-one-out took 39 s at n =
-4,000, against 0.8 s for fastkcv (OpenBLAS) and 23 s with the reference
-BLAS. DiceKriging, which uses the same closed-form leave-one-out
-formulas, is compared in the section “Related packages”. With the
-reference BLAS every method is slower, and fastkcv’s gain over
-<code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> is still about 600x for leave-one-out at n =
-1,000 and 2.5x to 6x for 5 to 10 folds at n = 1,000 to 5,000. At n =
-20,000, <code><a href="../reference/kcv.html">kcv()</a></code> takes about 110 seconds.</p>
+on the same simulated data (ordinary kriging; script
+<code>inst/bench/bench-local.R</code>) it takes 0.34 s at n = 2,000 and
+0.47 s at n = 4,000, against 0.24 s and 1.1 s for fastkcv with OpenBLAS
+on 4 threads: local kriging catches up between n = 2,000 and 3,000
+(between 1,000 and 2,000 with the default 8 OpenBLAS threads, and below
+n = 1,000 with the reference BLAS). Its time also grows with the number
+of folds: local leave-one-out took 58 s at n = 4,000, against 0.9 s for
+fastkcv (OpenBLAS, 4 threads) and 24 s with the reference BLAS.
+DiceKriging, which uses the same closed-form leave-one-out formulas, is
+compared in the section “Related packages”. With the reference BLAS
+every method is slower, and fastkcv’s gain over <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code>
+is still about 600x for leave-one-out at n = 1,000 and 2.5x to 6x for 5
+to 10 folds at n = 1,000 to 5,000. At n = 20,000, <code><a href="../reference/kcv.html">kcv()</a></code>
+takes about 110 seconds.</p>
 <p>Several responses share the factorization. At n = 5,000 (OpenBLAS),
 100 responses take 2.7 s (leave-one-out) to 3.6 s (buffered, radius 50)
-in one <code><a href="../reference/kcv.html">kcv()</a></code> call, 2 to 5 ms per additional response. One
-<code><a href="../reference/kcv.html">kcv()</a></code> call per response takes 233 to 317 s.</p>
+in one <code><a href="../reference/kcv.html">kcv()</a></code> call, 3.7 to 5.2 ms per additional response.
+One <code><a href="../reference/kcv.html">kcv()</a></code> call per response takes 233 to 317 s.</p>
 <p>The reference BLAS that ships with many R builds is single-threaded
 and much slower on these operations than an optimized BLAS such as
 OpenBLAS, Intel MKL or Apple’s Accelerate. Check which one R uses with
-<code>extSoftVersion()["BLAS"]</code>; see <code><a href="../reference/kcv.html">?kcv</a></code> (section
-“Performance”) for how to switch. The many small matrix operations of
-buffered leave-one-out do not benefit from BLAS threads. OpenBLAS starts
-one thread per logical CPU; on CPUs with simultaneous multithreading,
-one thread per physical core can be much faster
-(<code>OPENBLAS_NUM_THREADS=4</code> on the 4-core, 8-thread laptop
-above: 1.6 to 2 times faster for 10-fold <code><a href="../reference/kcv.html">kcv()</a></code> at n = 1,500
-to 5,000). The table above used the default 8 threads.</p>
+<code>extSoftVersion()["BLAS"]</code> or <code><a href="https://rdrr.io/r/utils/sessionInfo.html" class="external-link">sessionInfo()</a></code>. To
+switch:</p>
+<ul>
+<li>Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
+(<code>sudo apt install libopenblas0-pthread</code>); the system’s
+alternatives mechanism switches R to it without reinstalling
+anything.</li>
+<li>macOS: the CRAN build of R can use Apple’s Accelerate framework; see
+the R for macOS FAQ.</li>
+<li>Windows: see “R Installation and Administration” for replacing R’s
+BLAS.</li>
+</ul>
+<p>Multithreaded BLAS libraries use all cores by default; when running
+several R processes in parallel, limit the threads (for OpenBLAS, the
+environment variable <code>OPENBLAS_NUM_THREADS</code>). The many small
+matrix operations of buffered leave-one-out do not benefit from BLAS
+threads. OpenBLAS starts one thread per logical CPU; on CPUs with
+simultaneous multithreading, one thread per physical core can be much
+faster (<code>OPENBLAS_NUM_THREADS=4</code> on the 4-core, 8-thread
+laptop above: 1.6 to 2 times faster for 10-fold <code><a href="../reference/kcv.html">kcv()</a></code> at n
+= 1,500 to 5,000). The table above used the default 8 threads.</p>
 <p><code><a href="../reference/kcv.html">kcv()</a></code> builds the covariance matrix in place and needs
 one n x n matrix (8 n^2 bytes: 0.8 GB at n = 10,000, 3.2 GB at n =
 20,000); its measured peak memory use above R’s own baseline is within
@@ -447,36 +479,69 @@ builders, <code><a href="../reference/kcv_metrics.html">kcv_metrics()</a></code>
 <code><a href="../reference/kcv_prepare.html">kcv_run()</a></code> to reuse one factorization across fold designs,
 and <code><a href="../reference/kcv_engine.html">kcv_engine()</a></code> for any covariance matrix.</li>
 </ul>
-<p><code>leaveOneOut.km()</code> in DiceKriging uses the same
-closed-form leave-one-out algebra. It has no nugget term, works with
-tensor-product kernels on a design matrix rather than gstat variogram
-models on spatial data, and offers neither k-fold nor buffered designs.
-Without a nugget, and from the same covariance matrix, the two give the
-same variances (to about 1e-15) and predictions that agree to about
-1e-13, for simple kriging and for ordinary kriging with the trend
-re-estimated in each fold. The exception is the smoother
-<code>matern5_2</code> kernel with ordinary kriging: without a nugget
-its covariance matrix is badly conditioned, and the predictions agree
-only to between 1e-9 and 1e-7. End to end (model setup plus
-leave-one-out), fastkcv is 1.6 to 4.1 times faster with OpenBLAS and 1.4
-to 2.1 times with the reference BLAS. On the leave-one-out step alone
-the two are about level (0.9 to 1.8 times with OpenBLAS, 0.75 to 0.9
-times with the reference BLAS).</p>
+<p>DiceKriging computes leave-one-out (<code>leaveOneOut.km()</code>)
+and, since version 1.6.0, multiple-fold cross-validation
+(<code>cv()</code>) with the same closed-form formulas (Dubrule 1983;
+Ginsbourger and Schärer 2024), for simple kriging and for kriging with
+the trend re-estimated in each fold. Both handle a homogeneous nugget;
+observations with individual noise variances (<code>noise.var</code>)
+are not supported. <code>cv()</code> accepts folds that share points and
+also returns the covariance matrices of the cross-validation errors,
+which fastkcv does not. DiceKriging works with tensor-product kernels on
+a design matrix rather than gstat variogram models on spatial data. From
+the same covariance matrix, with or without a nugget, the two give the
+same variances to about 1e-15 and predictions to about 1e-13. The
+exception is the smoother <code>matern5_2</code> kernel without a nugget
+and with the trend re-estimated: its covariance matrix is badly
+conditioned, and the predictions agree only to between 1e-9 and 1e-7. On
+leave-one-out without a nugget, fastkcv is 1.6 to 4.1 times faster end
+to end (model setup plus leave-one-out) with OpenBLAS and 1.4 to 2.1
+times with the reference BLAS; on the leave-one-out step alone the two
+are about level (0.9 to 1.8 times with OpenBLAS, 0.75 to 0.9 times with
+the reference BLAS).</p>
+<p>spmodel fits spatial linear models with its own covariance families
+(including a nugget and anisotropy) and computes exact leave-one-out
+(<code>loocv()</code>) and k-fold cross-validation (<code><a href="../reference/kcv.html">kcv()</a></code>,
+with user folds through <code>folds_index</code>) from one inverse of
+the covariance matrix, updated for each fold, with the trend
+re-estimated by generalized least squares. Above n = 5,000 it switches
+to local approximations by default. It reports bias, MSPE, RMSPE, the
+squared correlation and interval coverage. spmodel also exports a
+function named <code><a href="../reference/kcv.html">kcv()</a></code>: when both packages are attached, the
+one attached last masks the other, so call <code><a href="../reference/kcv.html">fastkcv::kcv()</a></code>
+or <code>spmodel::kcv()</code> explicitly. Given a fitted spmodel model,
+fastkcv’s <code><a href="../reference/kcv.html">kcv()</a></code> stops with a pointer to
+<code>spmodel::kcv()</code>.</p>
+<p>For computer experiments, hetGP (<code>LOO_preds()</code>, for
+homoscedastic and heteroscedastic Gaussian process models) and
+RobustGaSP (<code>leave_one_out_rgasp()</code>) also give closed-form
+leave-one-out predictions.</p>
+<p>What fastkcv adds to these is gstat’s variogram models and input
+formats, spatial fold builders and buffered leave-one-out computed from
+the same factorization, several responses from one factorization, and
+the split into <code><a href="../reference/kcv_prepare.html">kcv_prepare()</a></code> and <code><a href="../reference/kcv_prepare.html">kcv_run()</a></code>
+that reuses one factorization across fold designs.</p>
 <p>blockCV and spatialsample build spatial folds (blocks, clusters,
 buffers, nearest-neighbor distance matching) for any model, but do not
 fit or predict with one. A partition from them, such as
-<code>folds_ids</code> from blockCV’s <code>cv_spatial()</code>, can be
-passed to <code>kcv_run(folds = )</code>.</p>
-<table class="table">
+<code>folds_ids</code> from blockCV’s <code>cv_spatial()</code>,
+<code>cv_cluster()</code> or <code>cv_group()</code> (leave-group-out),
+can be passed to <code>kcv_run(folds = )</code>. blockCV’s
+<code>cv_buffer()</code> and <code>cv_nndm()</code> return overlapping
+hold-out sets (<code>folds_list</code>) rather than a partition;
+fastkcv’s own <code>buffer</code> argument covers buffered
+leave-one-out.</p>
+<table style="width:100%;" class="table">
 <colgroup>
-<col width="19%">
+<col width="16%">
+<col width="6%">
+<col width="3%">
+<col width="12%">
+<col width="11%">
+<col width="17%">
 <col width="10%">
-<col width="4%">
+<col width="12%">
 <col width="8%">
-<col width="13%">
-<col width="13%">
-<col width="14%">
-<col width="15%">
 </colgroup>
 <thead><tr class="header">
 <th align="left"></th>
@@ -484,9 +549,10 @@ passed to <code>kcv_run(folds = )</code>.</p>
 <th align="left">k-fold</th>
 <th align="left">Buffered LOO</th>
 <th align="left">Block / cluster folds</th>
-<th align="left">Nugget, gstat models</th>
+<th align="left">Models</th>
 <th align="left">Input</th>
-<th align="left">Exact, no refit per fold</th>
+<th align="left">One factorization, exact</th>
+<th align="left">CV error covariance</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
@@ -494,11 +560,12 @@ passed to <code>kcv_run(folds = )</code>.</p>
 <td align="left">yes</td>
 <td align="left">yes</td>
 <td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
+<td align="left">builders, any fold vector</td>
+<td align="left">gstat models, nugget, anisotropy</td>
 <td align="left">data.frame, <code>sf</code>, <code>sp</code>
 </td>
 <td align="left">yes</td>
+<td align="left">no</td>
 </tr>
 <tr class="even">
 <td align="left">gstat <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code>
@@ -507,34 +574,51 @@ passed to <code>kcv_run(folds = )</code>.</p>
 <td align="left">yes</td>
 <td align="left">no</td>
 <td align="left">any fold vector</td>
-<td align="left">yes</td>
+<td align="left">gstat models, nugget, anisotropy</td>
 <td align="left">data.frame, <code>sf</code>, <code>sp</code>
 </td>
-<td align="left">no (refits)</td>
+<td align="left">no (refits each fold)</td>
+<td align="left">no</td>
 </tr>
 <tr class="odd">
-<td align="left">DiceKriging <code>leaveOneOut.km()</code>
+<td align="left">DiceKriging <code>leaveOneOut.km()</code>,
+<code>cv()</code>
 </td>
 <td align="left">yes</td>
-<td align="left">no</td>
-<td align="left">no</td>
-<td align="left">no</td>
-<td align="left">no</td>
+<td align="left">yes</td>
+<td align="left">overlapping folds, no builder</td>
+<td align="left">any index list</td>
+<td align="left">tensor-product kernels, homogeneous nugget</td>
 <td align="left">design matrix</td>
+<td align="left">yes</td>
 <td align="left">yes</td>
 </tr>
 <tr class="even">
+<td align="left">spmodel <code>loocv()</code>, <code><a href="../reference/kcv.html">kcv()</a></code>
+</td>
+<td align="left">yes</td>
+<td align="left">yes</td>
+<td align="left">no</td>
+<td align="left">any fold vector</td>
+<td align="left">own families, nugget, anisotropy</td>
+<td align="left">data.frame, <code>sf</code>
+</td>
+<td align="left">yes (local above n = 5,000)</td>
+<td align="left">no</td>
+</tr>
+<tr class="odd">
 <td align="left">blockCV</td>
-<td align="left">NNDM variant</td>
+<td align="left">NNDM, kNNDM</td>
 <td align="left">yes</td>
 <td align="left">yes</td>
-<td align="left">yes</td>
+<td align="left">yes, and leave-group-out</td>
 <td align="left">(folds only)</td>
 <td align="left">
 <code>sf</code>, <code>sp</code> points</td>
 <td align="left">(folds only)</td>
+<td align="left">(folds only)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td align="left">spatialsample</td>
 <td align="left">yes (<code>v = Inf</code>)</td>
 <td align="left">yes</td>
@@ -542,6 +626,7 @@ passed to <code>kcv_run(folds = )</code>.</p>
 <td align="left">yes</td>
 <td align="left">(folds only)</td>
 <td align="left"><code>sf</code></td>
+<td align="left">(folds only)</td>
 <td align="left">(folds only)</td>
 </tr>
 </tbody>

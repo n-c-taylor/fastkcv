@@ -68,7 +68,7 @@
 </div>
 <!-- badges: start -->
 
-<p>Fast, exact cross-validation for global kriging, as a companion to <a href="https://CRAN.R-project.org/package=gstat" class="external-link">gstat</a>. <code><a href="reference/kcv.html">kcv()</a></code> takes the same inputs as <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">gstat::krige.cv()</a></code> and returns the same output. It factorizes the covariance matrix of the observations once, instead of refitting the kriging system for every fold, and the results agree with <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> to numerical precision.</p>
+<p>Fast, exact cross-validation for global kriging, as a companion to <a href="https://CRAN.R-project.org/package=gstat" class="external-link">gstat</a>. <code><a href="reference/kcv.html">kcv()</a></code> takes the same inputs as <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">gstat::krige.cv()</a></code> and returns the same output. It factorizes the covariance matrix of the observations once, instead of refitting the kriging system for every fold, and the results agree with <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> to numerical precision. A covariance matrix too ill-conditioned for that (typically a Gaussian model without a nugget) gives a warning.</p>
 <ul>
 <li>Leave-one-out, k-fold and buffered (spatial) leave-one-out cross-validation for simple, ordinary and universal kriging.</li>
 <li>gstat variogram models <code>Nug</code>, <code>Exp</code>, <code>Sph</code>, <code>Gau</code>, <code>Mat</code>, <code>Ste</code>, <code>Cir</code>, <code>Pen</code>, <code>Bes</code>, <code>Wav</code> and <code>Hol</code>, nested sums of them and 2D geometric anisotropy. data.frame, <code>sf</code> and <code>sp</code> data.</li>
@@ -151,87 +151,7 @@
 <div class="section level2">
 <h2 id="related-packages">Related packages<a class="anchor" aria-label="anchor" href="#related-packages"></a>
 </h2>
-<p>fastkcv is a companion to gstat, not a fork or a replacement: <code><a href="reference/kcv.html">kcv()</a></code> takes the inputs of <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> and returns its output, and fitting variograms and kriging new locations stay with gstat. It is a separate package for three reasons. The single factorization works only for global kriging, while gstat’s engine sets up a kriging system for each prediction location, which is what makes local neighborhoods (<code>nmax</code>, <code>maxdist</code>) possible. It needs compiled C++ code (Rcpp, RcppArmadillo) and a dense n x n matrix (8 n^2 bytes, checked up front). And most of the package is a cross-validation toolkit rather than a faster <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code>: buffered leave-one-out, spatial fold builders, <code><a href="reference/kcv_metrics.html">kcv_metrics()</a></code>, <code><a href="reference/kcv_prepare.html">kcv_prepare()</a></code> / <code><a href="reference/kcv_prepare.html">kcv_run()</a></code> to reuse one factorization, and <code><a href="reference/kcv_engine.html">kcv_engine()</a></code> for any covariance matrix.</p>
-<p><code>leaveOneOut.km()</code> in DiceKriging uses the same closed-form leave-one-out algebra, without a nugget term, with tensor-product kernels on a design matrix rather than gstat variogram models on spatial data, and without k-fold or buffered designs. From the same covariance matrix, fastkcv is 1.6 to 4.1 times faster end to end (OpenBLAS) and about level on the leave-one-out step alone. blockCV and spatialsample build spatial folds for any model but do not fit one; a partition from them, such as <code>folds_ids</code> from blockCV’s <code>cv_spatial()</code>, can be passed to <code>kcv_run(folds = )</code>.</p>
-<table class="table">
-<colgroup>
-<col width="19%">
-<col width="10%">
-<col width="4%">
-<col width="8%">
-<col width="13%">
-<col width="13%">
-<col width="14%">
-<col width="15%">
-</colgroup>
-<thead><tr>
-<th align="left"></th>
-<th align="left">LOO</th>
-<th align="left">k-fold</th>
-<th align="left">Buffered LOO</th>
-<th align="left">Block / cluster folds</th>
-<th align="left">Nugget, gstat models</th>
-<th align="left">Input</th>
-<th align="left">Exact, no refit per fold</th>
-</tr></thead>
-<tbody>
-<tr>
-<td align="left">fastkcv</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">data.frame, <code>sf</code>, <code>sp</code>
-</td>
-<td align="left">yes</td>
-</tr>
-<tr>
-<td align="left">gstat <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code>
-</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">no</td>
-<td align="left">any fold vector</td>
-<td align="left">yes</td>
-<td align="left">data.frame, <code>sf</code>, <code>sp</code>
-</td>
-<td align="left">no (refits)</td>
-</tr>
-<tr>
-<td align="left">DiceKriging <code>leaveOneOut.km()</code>
-</td>
-<td align="left">yes</td>
-<td align="left">no</td>
-<td align="left">no</td>
-<td align="left">no</td>
-<td align="left">no</td>
-<td align="left">design matrix</td>
-<td align="left">yes</td>
-</tr>
-<tr>
-<td align="left">blockCV</td>
-<td align="left">NNDM variant</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">(folds only)</td>
-<td align="left">
-<code>sf</code>, <code>sp</code> points</td>
-<td align="left">(folds only)</td>
-</tr>
-<tr>
-<td align="left">spatialsample</td>
-<td align="left">yes (<code>v = Inf</code>)</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">yes</td>
-<td align="left">(folds only)</td>
-<td align="left"><code>sf</code></td>
-<td align="left">(folds only)</td>
-</tr>
-</tbody>
-</table>
+<p>fastkcv is a companion to gstat, not a fork or a replacement: <code><a href="reference/kcv.html">kcv()</a></code> takes the inputs of <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> and returns its output, and fitting variograms and kriging new locations stay with gstat. DiceKriging and spmodel also compute exact closed-form cross-validation, for their own models and inputs; blockCV and spatialsample build spatial folds that can be passed to <code>kcv_run(folds = )</code>. The vignette’s section “Related packages” compares them in detail. spmodel also exports a function <code><a href="reference/kcv.html">kcv()</a></code>: with both attached, call <code><a href="reference/kcv.html">fastkcv::kcv()</a></code>.</p>
 </div>
 <div class="section level2">
 <h2 id="use-of-ai-tools">Use of AI tools<a class="anchor" aria-label="anchor" href="#use-of-ai-tools"></a>

@@ -39,7 +39,7 @@ head(cv_fast)
 all.equal(cv_gstat, cv_fast, tolerance = 1e-10)
 #> [1] TRUE
 max(abs(cv_fast$var1.pred - cv_gstat$var1.pred))
-#> [1] 6.217249e-15
+#> [1] 5.329071e-15
 ```
 
 The output has the same kind as the input: a data.frame here, an `sf`
@@ -57,7 +57,7 @@ uk_gstat <- krige.cv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v,
 uk_fast <- kcv(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v,
   folds = f10)
 max(abs(uk_fast$var1.var - uk_gstat$var1.var))
-#> [1] 6.106227e-16
+#> [1] 3.608225e-16
 sk_fast <- kcv(log(zinc) ~ 1, ~ x + y, meuse, model = v, beta = 5.9)
 ```
 
@@ -71,6 +71,26 @@ Local neighborhoods (`nmax`, `nmin`, `maxdist`), block kriging and
 unbounded variogram models (such as `Lin` or `Pow`) are not supported
 and raise an error. So do geographic coordinates and duplicate
 locations.
+
+The agreement with
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+holds while the covariance matrix is reasonably conditioned. A very
+smooth model without a nugget (a Gaussian model with a long range, say)
+can make it nearly singular, and then both packages lose accuracy. The
+factorization estimates the reciprocal condition number of the matrix
+(shown when a
+[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+object is printed, below) and
+[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) warns
+when it is below 1e-13 (`options(fastkcv.rcond_warn = )`). Against a
+quadruple-precision computation of the same cross-validation (Gaussian
+and Stein models, n = 100 and 200, script
+`inst/bench/bench-conditioning.R`), fastkcv’s largest error in
+`var1.pred` was at most 1.2e-5 of the leave-one-out RMSE above that
+threshold, 2e-5 to 1.4e-3 between 1e-14 and 1e-13, and up to 10 times
+the RMSE below 1e-14, with
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+of similar accuracy throughout. A small nugget restores the accuracy.
 
 ## Factorize once, cross-validate many times
 
@@ -86,6 +106,7 @@ the cost. `kcv(...)` is the same as `kcv_run(kcv_prepare(...), ...)`.
 p <- kcv_prepare(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v)
 p
 #> <kcv_prepared> universal kriging, n = 155, p = 2, 187.7 Kb
+#> Estimated reciprocal condition number of C: 0.0051
 set.seed(1)
 rmse <- replicate(20, kcv_metrics(kcv_run(p, nfold = 10))$rmse)
 summary(rmse)
@@ -271,7 +292,7 @@ y <- log(meuse$zinc)
 F <- matrix(1, nrow(meuse), 1)
 e <- kcv_engine(C, F, y, folds = seq_len(nrow(meuse)))
 max(abs(e$pred - cv_fast$var1.pred))
-#> [1] 6.217249e-15
+#> [1] 5.329071e-15
 ```
 
 The response can be a matrix: each column is cross-validated with the
@@ -339,14 +360,16 @@ fastkcv computes exact global kriging.
 with a local neighborhood (`nmax`) solves a different, approximate
 kriging system of fixed size per prediction, so its time grows about
 linearly in n. For 10-fold cross-validation with `nmax = 50` on the same
-simulated data it catches up with fastkcv at about n = 2,500 (OpenBLAS,
-4 threads), at n = 1,500 to 2,000 with the default 8 OpenBLAS threads,
-and below n = 1,000 with the reference BLAS. Its time also grows with
-the number of folds: local leave-one-out took 39 s at n = 4,000, against
-0.8 s for fastkcv (OpenBLAS) and 23 s with the reference BLAS.
-DiceKriging, which uses the same closed-form leave-one-out formulas, is
-compared in the section “Related packages”. With the reference BLAS
-every method is slower, and fastkcv’s gain over
+simulated data (ordinary kriging; script `inst/bench/bench-local.R`) it
+takes 0.34 s at n = 2,000 and 0.47 s at n = 4,000, against 0.24 s and
+1.1 s for fastkcv with OpenBLAS on 4 threads: local kriging catches up
+between n = 2,000 and 3,000 (between 1,000 and 2,000 with the default 8
+OpenBLAS threads, and below n = 1,000 with the reference BLAS). Its time
+also grows with the number of folds: local leave-one-out took 58 s at n
+= 4,000, against 0.9 s for fastkcv (OpenBLAS, 4 threads) and 24 s with
+the reference BLAS. DiceKriging, which uses the same closed-form
+leave-one-out formulas, is compared in the section “Related packages”.
+With the reference BLAS every method is slower, and fastkcv’s gain over
 [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
 is still about 600x for leave-one-out at n = 1,000 and 2.5x to 6x for 5
 to 10 folds at n = 1,000 to 5,000. At n = 20,000,
@@ -356,19 +379,30 @@ about 110 seconds.
 Several responses share the factorization. At n = 5,000 (OpenBLAS), 100
 responses take 2.7 s (leave-one-out) to 3.6 s (buffered, radius 50) in
 one [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md)
-call, 2 to 5 ms per additional response. One
+call, 3.7 to 5.2 ms per additional response. One
 [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) call
 per response takes 233 to 317 s.
 
 The reference BLAS that ships with many R builds is single-threaded and
 much slower on these operations than an optimized BLAS such as OpenBLAS,
 Intel MKL or Apple’s Accelerate. Check which one R uses with
-`extSoftVersion()["BLAS"]`; see
-[`?kcv`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) (section
-“Performance”) for how to switch. The many small matrix operations of
-buffered leave-one-out do not benefit from BLAS threads. OpenBLAS starts
-one thread per logical CPU; on CPUs with simultaneous multithreading,
-one thread per physical core can be much faster
+`extSoftVersion()["BLAS"]` or
+[`sessionInfo()`](https://rdrr.io/r/utils/sessionInfo.html). To switch:
+
+- Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
+  (`sudo apt install libopenblas0-pthread`); the system’s alternatives
+  mechanism switches R to it without reinstalling anything.
+- macOS: the CRAN build of R can use Apple’s Accelerate framework; see
+  the R for macOS FAQ.
+- Windows: see “R Installation and Administration” for replacing R’s
+  BLAS.
+
+Multithreaded BLAS libraries use all cores by default; when running
+several R processes in parallel, limit the threads (for OpenBLAS, the
+environment variable `OPENBLAS_NUM_THREADS`). The many small matrix
+operations of buffered leave-one-out do not benefit from BLAS threads.
+OpenBLAS starts one thread per logical CPU; on CPUs with simultaneous
+multithreading, one thread per physical core can be much faster
 (`OPENBLAS_NUM_THREADS=4` on the 4-core, 8-thread laptop above: 1.6 to 2
 times faster for 10-fold
 [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) at n =
@@ -411,33 +445,74 @@ locations stay with gstat. It is a separate package for three reasons:
   [`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
   for any covariance matrix.
 
-`leaveOneOut.km()` in DiceKriging uses the same closed-form
-leave-one-out algebra. It has no nugget term, works with tensor-product
-kernels on a design matrix rather than gstat variogram models on spatial
-data, and offers neither k-fold nor buffered designs. Without a nugget,
-and from the same covariance matrix, the two give the same variances (to
-about 1e-15) and predictions that agree to about 1e-13, for simple
-kriging and for ordinary kriging with the trend re-estimated in each
-fold. The exception is the smoother `matern5_2` kernel with ordinary
-kriging: without a nugget its covariance matrix is badly conditioned,
-and the predictions agree only to between 1e-9 and 1e-7. End to end
-(model setup plus leave-one-out), fastkcv is 1.6 to 4.1 times faster
-with OpenBLAS and 1.4 to 2.1 times with the reference BLAS. On the
-leave-one-out step alone the two are about level (0.9 to 1.8 times with
-OpenBLAS, 0.75 to 0.9 times with the reference BLAS).
+DiceKriging computes leave-one-out (`leaveOneOut.km()`) and, since
+version 1.6.0, multiple-fold cross-validation (`cv()`) with the same
+closed-form formulas (Dubrule 1983; Ginsbourger and Schärer 2024), for
+simple kriging and for kriging with the trend re-estimated in each fold.
+Both handle a homogeneous nugget; observations with individual noise
+variances (`noise.var`) are not supported. `cv()` accepts folds that
+share points and also returns the covariance matrices of the
+cross-validation errors, which fastkcv does not. DiceKriging works with
+tensor-product kernels on a design matrix rather than gstat variogram
+models on spatial data. From the same covariance matrix, with or without
+a nugget, the two give the same variances to about 1e-15 and predictions
+to about 1e-13. The exception is the smoother `matern5_2` kernel without
+a nugget and with the trend re-estimated: its covariance matrix is badly
+conditioned, and the predictions agree only to between 1e-9 and 1e-7. On
+leave-one-out without a nugget, fastkcv is 1.6 to 4.1 times faster end
+to end (model setup plus leave-one-out) with OpenBLAS and 1.4 to 2.1
+times with the reference BLAS; on the leave-one-out step alone the two
+are about level (0.9 to 1.8 times with OpenBLAS, 0.75 to 0.9 times with
+the reference BLAS).
+
+spmodel fits spatial linear models with its own covariance families
+(including a nugget and anisotropy) and computes exact leave-one-out
+(`loocv()`) and k-fold cross-validation
+([`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md), with
+user folds through `folds_index`) from one inverse of the covariance
+matrix, updated for each fold, with the trend re-estimated by
+generalized least squares. Above n = 5,000 it switches to local
+approximations by default. It reports bias, MSPE, RMSPE, the squared
+correlation and interval coverage. spmodel also exports a function named
+[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md): when
+both packages are attached, the one attached last masks the other, so
+call
+[`fastkcv::kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md)
+or `spmodel::kcv()` explicitly. Given a fitted spmodel model, fastkcv’s
+[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) stops
+with a pointer to `spmodel::kcv()`.
+
+For computer experiments, hetGP (`LOO_preds()`, for homoscedastic and
+heteroscedastic Gaussian process models) and RobustGaSP
+(`leave_one_out_rgasp()`) also give closed-form leave-one-out
+predictions.
+
+What fastkcv adds to these is gstat’s variogram models and input
+formats, spatial fold builders and buffered leave-one-out computed from
+the same factorization, several responses from one factorization, and
+the split into
+[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+and
+[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+that reuses one factorization across fold designs.
 
 blockCV and spatialsample build spatial folds (blocks, clusters,
 buffers, nearest-neighbor distance matching) for any model, but do not
 fit or predict with one. A partition from them, such as `folds_ids` from
-blockCV’s `cv_spatial()`, can be passed to `kcv_run(folds = )`.
+blockCV’s `cv_spatial()`, `cv_cluster()` or `cv_group()`
+(leave-group-out), can be passed to `kcv_run(folds = )`. blockCV’s
+`cv_buffer()` and `cv_nndm()` return overlapping hold-out sets
+(`folds_list`) rather than a partition; fastkcv’s own `buffer` argument
+covers buffered leave-one-out.
 
-|  | LOO | k-fold | Buffered LOO | Block / cluster folds | Nugget, gstat models | Input | Exact, no refit per fold |
-|:---|:---|:---|:---|:---|:---|:---|:---|
-| fastkcv | yes | yes | yes | yes | yes | data.frame, `sf`, `sp` | yes |
-| gstat [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html) | yes | yes | no | any fold vector | yes | data.frame, `sf`, `sp` | no (refits) |
-| DiceKriging `leaveOneOut.km()` | yes | no | no | no | no | design matrix | yes |
-| blockCV | NNDM variant | yes | yes | yes | (folds only) | `sf`, `sp` points | (folds only) |
-| spatialsample | yes (`v = Inf`) | yes | yes | yes | (folds only) | `sf` | (folds only) |
+|  | LOO | k-fold | Buffered LOO | Block / cluster folds | Models | Input | One factorization, exact | CV error covariance |
+|:---|:---|:---|:---|:---|:---|:---|:---|:---|
+| fastkcv | yes | yes | yes | builders, any fold vector | gstat models, nugget, anisotropy | data.frame, `sf`, `sp` | yes | no |
+| gstat [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html) | yes | yes | no | any fold vector | gstat models, nugget, anisotropy | data.frame, `sf`, `sp` | no (refits each fold) | no |
+| DiceKriging `leaveOneOut.km()`, `cv()` | yes | yes | overlapping folds, no builder | any index list | tensor-product kernels, homogeneous nugget | design matrix | yes | yes |
+| spmodel `loocv()`, [`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md) | yes | yes | no | any fold vector | own families, nugget, anisotropy | data.frame, `sf` | yes (local above n = 5,000) | no |
+| blockCV | NNDM, kNNDM | yes | yes | yes, and leave-group-out | (folds only) | `sf`, `sp` points | (folds only) | (folds only) |
+| spatialsample | yes (`v = Inf`) | yes | yes | yes | (folds only) | `sf` | (folds only) | (folds only) |
 
 “(folds only)”: the package returns fold assignments and fits no model.
 NNDM is nearest-neighbor distance matching (`cv_nndm()`), a variant of

@@ -81,8 +81,8 @@ kcv_run(
 
 - folds:
 
-  Optional vector of length `n` of fold identifiers. Takes precedence
-  over `nfold`.
+  Optional vector of length `n` of fold identifiers, as an alternative
+  to a vector `nfold`. Giving both `nfold` and `folds` is an error.
 
 - buffer:
 
@@ -127,8 +127,9 @@ observation locations. See "Several responses" in
 ## See also
 
 [`kcv_engine_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
-for a precomputed covariance matrix; the "Performance" section of
-[`kcv()`](https://n-c-taylor.github.io/fastkcv/reference/kcv.md).
+for a precomputed covariance matrix;
+[`vignette("fastkcv")`](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md)
+for timings.
 
 ## Examples
 
@@ -138,6 +139,7 @@ v <- gstat::vgm(0.59, "Sph", 897, 0.05)
 p <- kcv_prepare(log(zinc) ~ sqrt(dist), ~ x + y, meuse, model = v)
 p
 #> <kcv_prepared> universal kriging, n = 155, p = 2, 187.7 Kb
+#> Estimated reciprocal condition number of C: 0.0051
 loo <- kcv_run(p)
 set.seed(1)
 rmse_10fold <- replicate(5, sqrt(mean(kcv_run(p, nfold = 10)$residual^2)))

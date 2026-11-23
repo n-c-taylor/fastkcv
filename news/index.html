@@ -53,6 +53,11 @@
 <li>
 <code><a href="../reference/kcv_metrics.html">kcv_metrics()</a></code>: RMSE, MAE, bias, z-score mean and variance, and prediction-interval coverage, overall or per fold.</li>
 <li>Memory requirements are checked up front against <code>getOption("fastkcv.max_gb")</code>.</li>
+<li>The factorization estimates the reciprocal condition number of the covariance matrix (stored in prepared objects and printed with them) and warns below <code>getOption("fastkcv.rcond_warn", 1e-13)</code>, where predictions can lose most of their accuracy (in <code><a href="https://r-spatial.github.io/gstat/reference/krige.cv.html" class="external-link">krige.cv()</a></code> too).</li>
+<li>Giving both <code>nfold</code> and <code>folds</code> is an error.</li>
+<li>Every fold must leave the trend identifiable by one documented criterion (smallest singular value of the remaining rows of an orthonormal trend basis at least 1e-6; see <code><a href="../reference/kcv_engine.html">?kcv_engine</a></code>).</li>
+<li>
+<code><a href="../reference/kcv.html">kcv()</a></code> given a fitted spmodel model points to <code>spmodel::kcv()</code>, which has the same name.</li>
 <li>Ordinary and universal kriging estimate the trend in an orthonormal basis of the trend matrix, so trends in large raw coordinates (such as a quadratic trend in UTM meters) stay accurate.</li>
 </ul></div>
   </main></div>

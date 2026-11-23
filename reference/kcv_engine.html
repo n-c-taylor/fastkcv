@@ -134,6 +134,20 @@ memory. A prepared object keeps its \(n \times n\) factor (\(8 n^2\)
 bytes) for as long as it exists.</p>
     </div>
     <div class="section level2">
+    <h2 id="trend-checks">Trend checks<a class="anchor" aria-label="anchor" href="#trend-checks"></a></h2>
+
+
+<p>Ordinary and universal kriging need a trend matrix <code>F</code> of full column
+rank, checked once before the factorization with a pivoted QR
+decomposition at R's default tolerance (<code>qr(F)$rank</code>, tolerance 1e-7).
+Each fold must also leave the trend identifiable: with \(U\) an
+orthonormal basis of the columns of <code>F</code>, a fold \(I\) is accepted when
+the smallest eigenvalue of \(U_{-I}' U_{-I}\) (the rows outside the
+fold) is at least \(10^{-12}\), that is, its smallest singular value
+is at least \(10^{-6}\). This per-fold criterion is the same for every
+fold scheme and for buffered leave-one-out.</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="kcv_prepare.html">kcv_prepare()</a></code> and <code><a href="kcv_prepare.html">kcv_run()</a></code> for the model-based equivalent.</p></div>
     </div>

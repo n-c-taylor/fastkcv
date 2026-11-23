@@ -7,7 +7,9 @@ Instead of refitting the kriging system once per fold, `kcv()`
 factorizes the covariance matrix once and obtains every fold's
 predictions and variances from it. Results match
 [`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
-to numerical precision.
+to numerical precision; when the covariance matrix is so ill-conditioned
+that this precision is lost (in both packages), a warning says so (see
+"Ill-conditioned covariance matrices").
 
 ## Usage
 
@@ -66,8 +68,8 @@ kcv(
 
 - folds:
 
-  Optional vector of length `n` of fold identifiers. Takes precedence
-  over `nfold`.
+  Optional vector of length `n` of fold identifiers, as an alternative
+  to a vector `nfold`. Giving both `nfold` and `folds` is an error.
 
 - beta:
 
@@ -206,43 +208,43 @@ one level of a factor.
 ## Performance
 
 Almost all of the time goes into one dense Cholesky factorization and
-triangular inverse, which R delegates to its BLAS/LAPACK libraries. The
-reference BLAS shipped with many R builds is single-threaded and slow;
-an optimized BLAS is typically many times faster on these operations.
-Check which one R uses with `extSoftVersion()["BLAS"]` or
-[`sessionInfo()`](https://rdrr.io/r/utils/sessionInfo.html).
-
-- Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
-  (`sudo apt install libopenblas0-pthread`); the system's alternatives
-  mechanism switches R to it without reinstalling anything.
-
-- macOS: the CRAN build of R can use Apple's Accelerate framework; see
-  the R for macOS FAQ for how to switch.
-
-- Windows: see "R Installation and Administration" for replacing R's
-  BLAS.
-
-Multithreaded BLAS libraries use all cores by default; when running
-several R processes in parallel, limit the threads (for OpenBLAS, the
-environment variable `OPENBLAS_NUM_THREADS`). OpenBLAS starts one thread
-per logical CPU, and on CPUs with simultaneous multithreading
-(hyper-threading) one thread per physical core can be much faster: on a
-4-core, 8-thread laptop, `OPENBLAS_NUM_THREADS=4` made 10-fold `kcv()`
-1.6 to 2 times faster than the default at n = 1,500 to 5,000.
-
-The factorization depends only on the locations, the model and the
-trend, not on the folds. To cross-validate several fold schemes for the
-same data, call
+triangular inverse, done by R's BLAS and LAPACK libraries, so an
+optimized BLAS (OpenBLAS, Intel MKL, Apple's Accelerate) makes `kcv()`
+many times faster than the reference BLAS. Timings, how to switch the
+BLAS, thread settings, the cost of few large folds, and comparisons with
+other packages are in
+[`vignette("fastkcv")`](https://n-c-taylor.github.io/fastkcv/articles/fastkcv.md);
+memory requirements are in
+[`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md).
+To cross-validate several fold schemes from one factorization, use
 [`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
-once and
-[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
-for each scheme. Each fold of size \\m\\ adds about \\m^2 n\\
-operations, so a few large folds cost the most: with 2 folds, the folds
-take about as long as the factorization.
+and
+[`kcv_run()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md).
 
-See
-[`kcv_engine()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_engine.md)
-for memory requirements.
+## Ill-conditioned covariance matrices
+
+The factorization also estimates the reciprocal condition number of the
+covariance matrix (LAPACK routine `dpocon`, in the 1-norm), shown by
+printing a
+[`kcv_prepare()`](https://n-c-taylor.github.io/fastkcv/reference/kcv_prepare.md)
+object. Predictions and variances have a relative error of up to about
+\\\epsilon / \mathrm{rcond}\\, with \\\epsilon \approx 2.2 \times
+10^{-16}\\ the machine precision, and
+[`krige.cv()`](https://r-spatial.github.io/gstat/reference/krige.cv.html)
+degrades in the same way. Below `getOption("fastkcv.rcond_warn", 1e-13)`
+a warning is given: against a quadruple-precision computation, the
+largest error in `var1.pred` was at most \\1.2 \times 10^{-5}\\ of the
+leave-one-out RMSE above that threshold and reached \\10^{-3}\\ just
+below it. Such matrices typically come from a Gaussian (or another very
+smooth) model without a nugget, or from nearly coincident locations; a
+small nugget usually restores the accuracy.
+
+## Name clash with spmodel
+
+spmodel also exports a function `kcv()`, for its fitted models. When
+both packages are attached, the one attached last masks the other; call
+`fastkcv::kcv()` explicitly. Given a fitted spmodel model, this `kcv()`
+stops with a pointer to `spmodel::kcv()`.
 
 ## Examples
 
