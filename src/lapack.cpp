@@ -7,6 +7,9 @@
 #define FCONE
 #endif
 
+#include <cstddef>
+#include <vector>
+
 #include "lapack.h"
 
 // Overwrites the upper triangle of `a` with R, where A = R'R. Returns the
@@ -22,4 +25,18 @@ int tri_inverse_upper_inplace(double* a, int n) {
   int info = 0;
   F77_CALL(dtrtri)("U", "N", &n, a, &n, &info FCONE FCONE);
   return info;
+}
+
+// Reciprocal condition number (1-norm) of A = R'R from its Cholesky factor
+// R (upper triangle of `r`) and `anorm`, the 1-norm of A. An estimate
+// (dpocon): within a small factor of the true value, O(n^2) operations.
+// Returns -1 if LAPACK reports an error.
+double chol_rcond_upper(const double* r, int n, double anorm) {
+  int info = 0;
+  double rcond = 0.0;
+  std::vector<double> work(3 * static_cast<std::size_t>(n));
+  std::vector<int> iwork(n);
+  F77_CALL(dpocon)("U", &n, r, &n, &anorm, &rcond, work.data(), iwork.data(),
+                   &info FCONE);
+  return info == 0 ? rcond : -1.0;
 }

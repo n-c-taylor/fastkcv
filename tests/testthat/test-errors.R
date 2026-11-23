@@ -399,3 +399,73 @@ test_that("infinite responses and trend covariates are rejected by kcv()", {
     nfold = rep(1:5, 31)), msg)
   expect_error(kcv(log(zinc) ~ log(dist), meuse_sf(), model = m_ok), msg)
 })
+
+test_that("argument errors come before the factorization", {
+  # kcv() hands the factorization to run_scheme() as a lazily evaluated
+  # argument, so with a memory budget too small for any factorization the
+  # argument error must still be the one raised.
+  meuse <- meuse_df()
+  withr::local_options(fastkcv.max_gb = 1e-9)
+  run <- function(...) kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_ok, ...)
+  expect_error(run(), "memory budget")
+  expect_error(run(folds = 1:3), "`folds` must have one non-missing value")
+  expect_error(run(nfold = 0), "`nfold` must be a single positive integer")
+  expect_error(run(buffer = -1), "`buffer` must be a single non-negative")
+  expect_error(run(buffer = 100, targets = 0), "`targets` must be row numbers")
+  expect_error(run(nfold = 5, folds = rep(1:5, 31)), "not both")
+})
+
+test_that("`nfold` and `folds` cannot both be given", {
+  meuse <- meuse_df()
+  f <- rep_len(1:5, nrow(meuse))
+  expect_error(
+    kcv(log(zinc) ~ 1, ~ x + y, meuse, model = m_ok, nfold = f, folds = f),
+    "Give either `nfold` or `folds`, not both."
+  )
+  p <- kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse, model = m_ok)
+  expect_error(kcv_run(p, nfold = 5, folds = f), "not both")
+  expect_identical(kcv_run(p, folds = f), kcv_run(p, nfold = f))
+})
+
+test_that("a fitted spmodel model is pointed to spmodel::kcv()", {
+  fake <- structure(list(), class = "splm")
+  expect_error(kcv(fake), "spmodel::kcv\\(\\)")
+})
+
+test_that("C++ and R agree on fold identifiability at the 1e-6 boundary", {
+  # F = cbind(1, x) with x constant outside fold 1 except for a deviation
+  # of size d, so the remaining rows of an orthonormal basis U of F have a
+  # smallest singular value proportional to d. The C++ engine declares the
+  # fold unidentifiable when the smallest eigenvalue of U[-I, ]'U[-I, ] is
+  # below 1e-12 (singular value 1e-6); the R oracle uses the same criterion.
+  set.seed(4)
+  n <- 40
+  xy <- matrix(runif(2 * n), ncol = 2)
+  C <- exp(-as.matrix(dist(xy)) / 0.3) + diag(0.1, n)
+  y <- rnorm(n)
+  folds <- rep(1:2, c(10, 30))
+  sv <- function(d) {
+    x <- c(seq(-1, 1, length.out = 10), rep(0, 30))
+    x[11] <- d
+    x[12] <- -d
+    U <- qr.Q(qr(cbind(1, x)))
+    list(F = cbind(1, x), s = min(svd(U[folds == 2, ])$d))
+  }
+  # Choose d so that the singular value is 0.5e-6 and 2e-6.
+  s1 <- sv(1)$s
+  for (target in c(0.5e-6, 2e-6)) {
+    d <- target / s1
+    a <- sv(d)
+    expect_equal(a$s, target, tolerance = 1e-3)
+    cpp <- tryCatch(kcv_engine(C, a$F, y, folds), error = identity)
+    r <- tryCatch(kcv_engine_r(C, a$F, y, folds), error = identity)
+    if (target < 1e-6) {
+      expect_s3_class(cpp, "error")
+      expect_match(conditionMessage(cpp), "Fold 1: the trend is not identifiable")
+      expect_identical(conditionMessage(r), conditionMessage(cpp))
+    } else {
+      expect_false(inherits(cpp, "error"))
+      expect_false(inherits(r, "error"))
+    }
+  }
+})

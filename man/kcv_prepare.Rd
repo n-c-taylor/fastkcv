@@ -49,8 +49,9 @@ leave-one-out; a single integer \code{k < n} for random k-fold assignment
 (drawn exactly as \code{krige.cv()} does, so the same seed gives the same
 folds); or a vector of length \code{n} of fold identifiers.}
 
-\item{folds}{Optional vector of length \code{n} of fold identifiers. Takes
-precedence over \code{nfold}.}
+\item{folds}{Optional vector of length \code{n} of fold identifiers, as an
+alternative to a vector \code{nfold}. Giving both \code{nfold} and \code{folds} is an
+error.}
 
 \item{buffer}{Optional radius for buffered leave-one-out, in coordinate
 units (\eqn{\ge 0}). Each observation is predicted from the observations

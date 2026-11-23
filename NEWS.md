@@ -28,6 +28,16 @@ First release.
   prediction-interval coverage, overall or per fold.
 * Memory requirements are checked up front against
   `getOption("fastkcv.max_gb")`.
+* The factorization estimates the reciprocal condition number of the
+  covariance matrix (stored in prepared objects and printed with them) and
+  warns below `getOption("fastkcv.rcond_warn", 1e-13)`, where predictions
+  can lose most of their accuracy (in `krige.cv()` too).
+* Giving both `nfold` and `folds` is an error.
+* Every fold must leave the trend identifiable by one documented
+  criterion (smallest singular value of the remaining rows of an
+  orthonormal trend basis at least 1e-6; see `?kcv_engine`).
+* `kcv()` given a fitted spmodel model points to `spmodel::kcv()`, which
+  has the same name.
 * Ordinary and universal kriging estimate the trend in an orthonormal basis
   of the trend matrix, so trends in large raw coordinates (such as a
   quadratic trend in UTM meters) stay accurate.

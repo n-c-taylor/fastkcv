@@ -75,6 +75,19 @@ memory. A prepared object keeps its \eqn{n \times n} factor (\eqn{8 n^2}
 bytes) for as long as it exists.
 }
 
+\section{Trend checks}{
+
+Ordinary and universal kriging need a trend matrix \code{F} of full column
+rank, checked once before the factorization with a pivoted QR
+decomposition at R's default tolerance (\code{qr(F)$rank}, tolerance 1e-7).
+Each fold must also leave the trend identifiable: with \eqn{U} an
+orthonormal basis of the columns of \code{F}, a fold \eqn{I} is accepted when
+the smallest eigenvalue of \eqn{U_{-I}' U_{-I}} (the rows outside the
+fold) is at least \eqn{10^{-12}}, that is, its smallest singular value
+is at least \eqn{10^{-6}}. This per-fold criterion is the same for every
+fold scheme and for buffered leave-one-out.
+}
+
 \examples{
 set.seed(1)
 xy <- matrix(runif(100), ncol = 2)

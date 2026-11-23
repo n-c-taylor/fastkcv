@@ -226,7 +226,19 @@ void transpose_inplace(double* a, std::size_t n) {
 Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
                           bool simple) {
   const int n = Wr.nrow();
+  // 1-norm of C (largest absolute column sum), which dpocon needs and which
+  // is lost once dpotrf overwrites the buffer.
+  double anorm = 0.0;
+  for (int j = 0; j < n; ++j) {
+    const double* col = Wr.begin() + std::size_t(j) * n;
+    double s = 0.0;
+    for (int i = 0; i < n; ++i) s += std::fabs(col[i]);
+    anorm = std::max(anorm, s);
+  }
   if (chol_upper_inplace(Wr.begin(), n) != 0) return fail(1, 0);
+  // Estimated reciprocal condition number of C: predictions and variances
+  // lose about log10(1 / rcond) digits. The R side warns when it is small.
+  const double rcond = chol_rcond_upper(Wr.begin(), n, anorm);
   if (tri_inverse_upper_inplace(Wr.begin(), n) != 0) return fail(1, 0);
   // Zero the (unreferenced) lower triangle of R^{-1}, then transpose.
   double* w = Wr.begin();
@@ -264,7 +276,8 @@ Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
       Rcpp::Named("status") = 0, Rcpp::Named("Wt") = Wr,
       Rcpp::Named("B") = B, Rcpp::Named("S") = S, Rcpp::Named("G") = G,
       Rcpp::Named("qdiag") =
-          Rcpp::NumericVector(qdiag.begin(), qdiag.end()));
+          Rcpp::NumericVector(qdiag.begin(), qdiag.end()),
+      Rcpp::Named("rcond") = rcond);
 }
 
 // Points within `radius` of point i (Euclidean), from candidates sorted by

@@ -4,7 +4,9 @@
 #' observation in the kriging neighborhood). Instead of refitting the kriging
 #' system once per fold, `kcv()` factorizes the covariance matrix once and
 #' obtains every fold's predictions and variances from it. Results match
-#' `krige.cv()` to numerical precision.
+#' `krige.cv()` to numerical precision; when the covariance matrix is so
+#' ill-conditioned that this precision is lost (in both packages), a
+#' warning says so (see "Ill-conditioned covariance matrices").
 #'
 #' Ordinary kriging (`formula = z ~ 1`) and universal kriging (`z ~ x + y`,
 #' external drift, ...) re-estimate the trend by generalized least squares in
@@ -27,8 +29,9 @@
 #'   leave-one-out; a single integer `k < n` for random k-fold assignment
 #'   (drawn exactly as `krige.cv()` does, so the same seed gives the same
 #'   folds); or a vector of length `n` of fold identifiers.
-#' @param folds Optional vector of length `n` of fold identifiers. Takes
-#'   precedence over `nfold`.
+#' @param folds Optional vector of length `n` of fold identifiers, as an
+#'   alternative to a vector `nfold`. Giving both `nfold` and `folds` is an
+#'   error.
 #' @param beta Optional trend coefficients; if given, simple kriging with this
 #'   known trend is used. A vector of length p (the number of trend
 #'   coefficients) is shared by all responses; with several responses, a
@@ -156,6 +159,26 @@
 #' factorization.
 #'
 #' See [kcv_engine()] for memory requirements.
+#'
+#' @section Ill-conditioned covariance matrices:
+#' The factorization also estimates the reciprocal condition number of the
+#' covariance matrix (LAPACK routine `dpocon`, in the 1-norm), shown by printing a
+#' [kcv_prepare()] object. Predictions and variances have a relative error
+#' of up to about \eqn{\epsilon / \mathrm{rcond}}, with \eqn{\epsilon
+#' \approx 2.2 \times 10^{-16}} the machine precision, and `krige.cv()`
+#' degrades in the same way. Below `getOption("fastkcv.rcond_warn", 1e-13)`
+#' a warning is given: against a quadruple-precision computation, the
+#' largest error in `var1.pred` was at most \eqn{1.2 \times 10^{-5}} of
+#' the leave-one-out RMSE above that threshold and reached
+#' \eqn{10^{-3}} just below it. Such matrices typically come from a
+#' Gaussian (or another very smooth) model without a nugget, or from nearly
+#' coincident locations; a small nugget usually restores the accuracy.
+#'
+#' @section Name clash with spmodel:
+#' spmodel also exports a function `kcv()`, for its fitted models. When
+#' both packages are attached, the one attached last masks the other; call
+#' `fastkcv::kcv()` explicitly. Given a fitted spmodel model, this `kcv()`
+#' stops with a pointer to `spmodel::kcv()`.
 #' @export
 #' @examples
 #' library(sp)
@@ -182,8 +205,10 @@
 kcv <- function(formula, locations, data, model, nfold, folds = NULL,
                 beta = NULL, buffer = NULL, targets = NULL, ...) {
   inp <- kcv_inputs(formula, locations, data, model, beta, ...)
-  # `p` is a promise: the factorization runs only after the fold and buffer
-  # arguments have been checked.
+  # run_scheme() checks the fold and buffer arguments before it first uses
+  # its argument `p`. R evaluates arguments lazily, so kcv_factor() (the
+  # O(n^3) factorization and its memory check) runs only after those checks
+  # pass and a bad argument fails fast. Do not force `p` earlier.
   run_scheme(kcv_factor(inp$inp, inp$model, beta), inp$inp, nfold, folds,
     buffer, targets)
 }
@@ -309,7 +334,11 @@ run_scheme <- function(p, inp, nfold, folds, buffer, targets) {
       length(targets))
     return(build_output(inp, run_buffer_prepared(p, inp$y, buffer, targets)))
   }
-  fold <- resolve_folds(nfold, folds, n)
+  fold <- if (missing(nfold)) {
+    resolve_folds(folds = folds, n = n)
+  } else {
+    resolve_folds(nfold, folds, n)
+  }
   check_run_memory(n, ncol(inp$y), n)
   build_output(inp, run_prepared(p, inp$y, fold))
 }
@@ -334,6 +363,15 @@ check_buffer_args <- function(buffer, nfold_missing, folds, targets, n) {
 
 # Argument checks and input parsing shared by kcv() and kcv_prepare().
 kcv_inputs <- function(formula, locations, data, model, beta, ...) {
+  # spmodel also exports kcv(), for its fitted models; whichever package is
+  # attached last masks the other.
+  if (inherits(formula, c("splm", "spautor", "spglm", "spgautor"))) {
+    stop(
+      "`formula` is a fitted spmodel model. This is fastkcv::kcv(); use ",
+      "spmodel::kcv() for spmodel models.",
+      call. = FALSE
+    )
+  }
   check_dots(...)
 
   # krige.cv(formula, <sf/sp>, model) passes the model in third position;
@@ -377,6 +415,9 @@ kcv_factor <- function(inp, model, beta) {
 
 # Fold vector from kcv()'s `nfold` / `folds` arguments.
 resolve_folds <- function(nfold, folds, n) {
+  if (!is.null(folds) && !missing(nfold)) {
+    stop("Give either `nfold` or `folds`, not both.", call. = FALSE)
+  }
   if (!is.null(folds)) {
     if (length(folds) != n || anyNA(folds)) {
       stop("`folds` must have one non-missing value per observation (n = ", n,

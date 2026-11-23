@@ -15,8 +15,11 @@ GLS
 gstat
 gstat's
 Hartigan
+hetGP
+kNNDM
 krige
 MKL
+MSPE
 multithreaded
 Multithreaded
 multithreading
@@ -24,10 +27,13 @@ NNDM
 OpenBLAS
 Rcpp
 RcppArmadillo
+RMSPE
+RobustGaSP
 Rtools
 Schärer
 spatialsample
 spatialsample's
+spmodel
 toolchain
 TRANSfer
 unsampled

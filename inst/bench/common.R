@@ -31,6 +31,18 @@ cache_dir <- file.path(bench_dir, "cache")
 dir.create(results_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
 
+# Sample sizes of a script: `default`, or FASTKCV_BENCH_NS (comma separated)
+# for a smoke run, e.g. FASTKCV_BENCH_NS="250,500" FASTKCV_BENCH_CAP=5. A
+# script whose cost grows too fast for those sizes passes its own `smoke`.
+bench_ns <- function(default, smoke = NULL) {
+  env <- Sys.getenv("FASTKCV_BENCH_NS")
+  if (!nzchar(env)) return(default)
+  if (!is.null(smoke)) smoke else as.numeric(strsplit(env, ",")[[1]])
+}
+
+# Competitors predicted to take longer than this many seconds are skipped.
+bench_cap <- function() as.numeric(Sys.getenv("FASTKCV_BENCH_CAP", "600"))
+
 # "openblas" or "refblas", from the BLAS library actually loaded.
 blas_tag <- function() {
   lib <- paste(extSoftVersion()[["BLAS"]], La_library())

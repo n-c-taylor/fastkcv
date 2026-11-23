@@ -40,8 +40,9 @@ leave-one-out; a single integer \code{k < n} for random k-fold assignment
 (drawn exactly as \code{krige.cv()} does, so the same seed gives the same
 folds); or a vector of length \code{n} of fold identifiers.}
 
-\item{folds}{Optional vector of length \code{n} of fold identifiers. Takes
-precedence over \code{nfold}.}
+\item{folds}{Optional vector of length \code{n} of fold identifiers, as an
+alternative to a vector \code{nfold}. Giving both \code{nfold} and \code{folds} is an
+error.}
 
 \item{beta}{Optional trend coefficients; if given, simple kriging with this
 known trend is used. A vector of length p (the number of trend
@@ -82,7 +83,9 @@ A drop-in companion to \code{\link[gstat:krige.cv]{gstat::krige.cv()}} for globa
 observation in the kriging neighborhood). Instead of refitting the kriging
 system once per fold, \code{kcv()} factorizes the covariance matrix once and
 obtains every fold's predictions and variances from it. Results match
-\code{krige.cv()} to numerical precision.
+\code{krige.cv()} to numerical precision; when the covariance matrix is so
+ill-conditioned that this precision is lost (in both packages), a
+warning says so (see "Ill-conditioned covariance matrices").
 }
 \details{
 Ordinary kriging (\code{formula = z ~ 1}) and universal kriging (\code{z ~ x + y},
@@ -193,6 +196,30 @@ folds cost the most: with 2 folds, the folds take about as long as the
 factorization.
 
 See \code{\link[=kcv_engine]{kcv_engine()}} for memory requirements.
+}
+
+\section{Ill-conditioned covariance matrices}{
+
+The factorization also estimates the reciprocal condition number of the
+covariance matrix (LAPACK routine \code{dpocon}, in the 1-norm), shown by printing a
+\code{\link[=kcv_prepare]{kcv_prepare()}} object. Predictions and variances have a relative error
+of up to about \eqn{\epsilon / \mathrm{rcond}}, with \eqn{\epsilon
+\approx 2.2 \times 10^{-16}} the machine precision, and \code{krige.cv()}
+degrades in the same way. Below \code{getOption("fastkcv.rcond_warn", 1e-13)}
+a warning is given: against a quadruple-precision computation, the
+largest error in \code{var1.pred} was at most \eqn{1.2 \times 10^{-5}} of
+the leave-one-out RMSE above that threshold and reached
+\eqn{10^{-3}} just below it. Such matrices typically come from a
+Gaussian (or another very smooth) model without a nugget, or from nearly
+coincident locations; a small nugget usually restores the accuracy.
+}
+
+\section{Name clash with spmodel}{
+
+spmodel also exports a function \code{kcv()}, for its fitted models. When
+both packages are attached, the one attached last masks the other; call
+\code{fastkcv::kcv()} explicitly. Given a fitted spmodel model, this \code{kcv()}
+stops with a pointer to \code{spmodel::kcv()}.
 }
 
 \examples{

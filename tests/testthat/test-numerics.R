@@ -102,3 +102,37 @@ test_that("UTM-scale coordinates with a quadratic trend match the centered fit",
   expect_close(sk$var1.pred, refsk$pred, 1e-8, "SK predictions")
   expect_close(sk$var1.var, refsk$var, 1e-8, "SK variances")
 })
+
+test_that("an ill-conditioned covariance matrix gives a warning", {
+  # For a diagonal matrix, dpocon's estimate of the reciprocal condition
+  # number is exact: min(d) / max(d).
+  thr <- rcond_warn_default
+  F <- matrix(1, 3, 1)
+  above <- diag(c(1, 1, 10 * thr))
+  below <- diag(c(1, 1, thr / 10))
+  expect_no_warning(p <- kcv_engine_prepare(above, F))
+  expect_equal(p$rcond, 10 * thr)
+  expect_warning(p <- kcv_engine_prepare(below, F), "ill-conditioned")
+  expect_equal(p$rcond, thr / 10)
+  expect_output(print(p), "reciprocal condition number of C: 1e-1")
+  # The threshold is an option.
+  withr::with_options(list(fastkcv.rcond_warn = thr / 100), {
+    expect_no_warning(kcv_engine_prepare(below, F))
+  })
+  # kcv() warns too, and its result is still returned.
+  d <- meuse_df()[1:30, ]
+  d$x[2] <- d$x[1] + 1e-4 # rcond about 1e-15
+  d$y[2] <- d$y[1]
+  g <- gstat::vgm(0.6, "Gau", 300)
+  expect_warning(out <- kcv(log(zinc) ~ 1, ~ x + y, d, model = g),
+    "ill-conditioned")
+  expect_identical(nrow(out), 30L)
+})
+
+test_that("objects saved without rcond still print and run", {
+  p <- kcv_prepare(log(zinc) ~ 1, ~ x + y, meuse_df(),
+    model = gstat::vgm(0.5, "Sph", 900, 0.1))
+  p$rcond <- NULL
+  expect_output(print(p), "ordinary kriging")
+  expect_no_error(kcv_run(p))
+})

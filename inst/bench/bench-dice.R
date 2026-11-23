@@ -1,6 +1,8 @@
 # Leave-one-out without a nugget: fastkcv's kcv_engine() vs
 # DiceKriging::leaveOneOut.km(), which implements the same closed-form
-# formulas (Dubrule 1983) but has no nugget / measurement-error term.
+# formulas (Dubrule 1983). DiceKriging also handles a homogeneous nugget
+# (km(nugget = )) and, through cv(), multiple-fold cross-validation; it
+# excludes only observations with individual noise variances (noise.var).
 #
 # Both start from the same covariance: a DiceKriging km() object with all
 # parameters fixed (covtype "exp" and "matern5_2"; DiceKriging's kernels are

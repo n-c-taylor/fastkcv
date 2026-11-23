@@ -9,7 +9,8 @@ Fast, exact cross-validation for global kriging, as a companion to
 inputs as `gstat::krige.cv()` and returns the same output. It factorizes the
 covariance matrix of the observations once, instead of refitting the
 kriging system for every fold, and the results agree with `krige.cv()` to
-numerical precision.
+numerical precision. A covariance matrix too ill-conditioned for that
+(typically a Gaussian model without a nugget) gives a warning.
 
 * Leave-one-out, k-fold and buffered (spatial) leave-one-out
   cross-validation for simple, ordinary and universal kriging.
@@ -101,23 +102,69 @@ leave-one-out, spatial fold builders, `kcv_metrics()`, `kcv_prepare()` /
 `kcv_run()` to reuse one factorization, and `kcv_engine()` for any
 covariance matrix.
 
-`leaveOneOut.km()` in DiceKriging uses the same closed-form leave-one-out
-algebra, without a nugget term, with tensor-product kernels on a design
-matrix rather than gstat variogram models on spatial data, and without
-k-fold or buffered designs. From the same covariance matrix, fastkcv is
-1.6 to 4.1 times faster end to end (OpenBLAS) and about level on the
-leave-one-out step alone. blockCV and spatialsample build spatial folds
-for any model but do not fit one; a partition from them, such as
-`folds_ids` from blockCV's `cv_spatial()`, can be passed to
-`kcv_run(folds = )`.
+DiceKriging computes leave-one-out (`leaveOneOut.km()`) and, since version
+1.6.0, multiple-fold cross-validation (`cv()`) with the same closed-form
+formulas (Dubrule 1983; Ginsbourger and Schärer 2024), for simple kriging
+and for kriging with the trend re-estimated in each fold. Both handle a
+homogeneous nugget; observations with individual noise variances
+(`noise.var`) are not supported. `cv()` accepts folds that share points
+and also returns the covariance matrices of the cross-validation errors,
+which fastkcv does not. DiceKriging works with tensor-product kernels on a
+design matrix rather than gstat variogram models on spatial data. From the
+same covariance matrix, with or without a nugget, the two give the same
+variances to about 1e-15 and predictions to about 1e-13. The exception is the smoother
+`matern5_2` kernel without a nugget and with the trend re-estimated: its
+covariance matrix is badly conditioned, and the predictions agree only to
+between 1e-9 and 1e-7. On leave-one-out without a nugget, fastkcv is 1.6
+to 4.1 times faster end to end (model setup plus leave-one-out) with
+OpenBLAS and 1.4 to 2.1 times with the reference BLAS; on the
+leave-one-out step alone the two are about level (0.9 to 1.8 times with
+OpenBLAS, 0.75 to 0.9 times with the reference BLAS).
 
-|                                | LOO              | k-fold | Buffered LOO | Block / cluster folds | Nugget, gstat models | Input                  | Exact, no refit per fold |
-|:-------------------------------|:-----------------|:-------|:-------------|:----------------------|:---------------------|:-----------------------|:-------------------------|
-| fastkcv                        | yes              | yes    | yes          | yes                   | yes                  | data.frame, `sf`, `sp` | yes                      |
-| gstat `krige.cv()`             | yes              | yes    | no           | any fold vector       | yes                  | data.frame, `sf`, `sp` | no (refits)              |
-| DiceKriging `leaveOneOut.km()` | yes              | no     | no           | no                    | no                   | design matrix          | yes                      |
-| blockCV                        | NNDM variant     | yes    | yes          | yes                   | (folds only)         | `sf`, `sp` points      | (folds only)             |
-| spatialsample                  | yes (`v = Inf`)  | yes    | yes          | yes                   | (folds only)         | `sf`                   | (folds only)             |
+spmodel fits spatial linear models with its own covariance families
+(including a nugget and anisotropy) and computes exact leave-one-out
+(`loocv()`) and k-fold cross-validation (`kcv()`, with user folds through
+`folds_index`) from one inverse of the covariance matrix, updated for each
+fold, with the trend re-estimated by generalized least squares. Above
+n = 5,000 it switches to local approximations by default. It reports
+bias, MSPE, RMSPE, the squared correlation and interval coverage. spmodel
+also exports a function named `kcv()`: when both packages are attached,
+the one attached last masks the other, so call `fastkcv::kcv()` or
+`spmodel::kcv()` explicitly. Given a fitted spmodel model, fastkcv's
+`kcv()` stops with a pointer to `spmodel::kcv()`.
+
+For computer experiments, hetGP (`LOO_preds()`, for homoscedastic and
+heteroscedastic Gaussian process models) and RobustGaSP
+(`leave_one_out_rgasp()`) also give closed-form leave-one-out predictions.
+
+What fastkcv adds to these is gstat's variogram models and input formats,
+spatial fold builders and buffered leave-one-out computed from the same
+factorization, several responses from one factorization, and the split
+into `kcv_prepare()` and `kcv_run()` that reuses one factorization across
+fold designs.
+
+blockCV and spatialsample build spatial folds (blocks, clusters, buffers,
+nearest-neighbor distance matching) for any model, but do not fit or
+predict with one. A partition from them, such as `folds_ids` from
+blockCV's `cv_spatial()`, `cv_cluster()` or `cv_group()` (leave-group-out),
+can be passed to `kcv_run(folds = )`. blockCV's `cv_buffer()` and
+`cv_nndm()` return overlapping hold-out sets (`folds_list`) rather than a
+partition; fastkcv's own `buffer` argument covers buffered leave-one-out.
+
+|                                          | LOO             | k-fold | Buffered LOO                   | Block / cluster folds       | Models                                     | Input                    | One factorization, exact     | CV error covariance |
+|:-----------------------------------------|:----------------|:-------|:-------------------------------|:----------------------------|:-------------------------------------------|:-------------------------|:-----------------------------|:--------------------|
+| fastkcv                                  | yes             | yes    | yes                            | builders, any fold vector   | gstat models, nugget, anisotropy           | data.frame, `sf`, `sp`   | yes                          | no                  |
+| gstat `krige.cv()`                       | yes             | yes    | no                             | any fold vector             | gstat models, nugget, anisotropy           | data.frame, `sf`, `sp`   | no (refits each fold)        | no                  |
+| DiceKriging `leaveOneOut.km()`, `cv()`   | yes             | yes    | overlapping folds, no builder  | any index list              | tensor-product kernels, homogeneous nugget | design matrix            | yes                          | yes                 |
+| spmodel `loocv()`, `kcv()`               | yes             | yes    | no                             | any fold vector             | own families, nugget, anisotropy           | data.frame, `sf`         | yes (local above n = 5,000)  | no                  |
+| blockCV                                  | NNDM, kNNDM     | yes    | yes                            | yes, and leave-group-out    | (folds only)                               | `sf`, `sp` points        | (folds only)                 | (folds only)        |
+| spatialsample                            | yes (`v = Inf`) | yes    | yes                            | yes                         | (folds only)                               | `sf`                     | (folds only)                 | (folds only)        |
+
+"(folds only)": the package returns fold assignments and fits no model.
+NNDM is nearest-neighbor distance matching (`cv_nndm()`), a variant of
+leave-one-out; blockCV's buffered leave-one-out is `cv_buffer()`.
+spatialsample's buffered leave-one-out is `spatial_buffer_vfold_cv()` with
+`v = Inf` and a `buffer`.
 
 ## Use of AI tools
 

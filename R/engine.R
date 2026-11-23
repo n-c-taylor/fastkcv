@@ -30,6 +30,17 @@
 #' memory. A prepared object keeps its \eqn{n \times n} factor (\eqn{8 n^2}
 #' bytes) for as long as it exists.
 #'
+#' @section Trend checks:
+#' Ordinary and universal kriging need a trend matrix `F` of full column
+#' rank, checked once before the factorization with a pivoted QR
+#' decomposition at R's default tolerance (`qr(F)$rank`, tolerance 1e-7).
+#' Each fold must also leave the trend identifiable: with \eqn{U} an
+#' orthonormal basis of the columns of `F`, a fold \eqn{I} is accepted when
+#' the smallest eigenvalue of \eqn{U_{-I}' U_{-I}} (the rows outside the
+#' fold) is at least \eqn{10^{-12}}, that is, its smallest singular value
+#' is at least \eqn{10^{-6}}. This per-fold criterion is the same for every
+#' fold scheme and for buffered leave-one-out.
+#'
 #' @param C n x n covariance matrix of the observations (symmetric positive
 #'   definite; an asymmetric matrix or a non-finite entry is an error).
 #' @param F n x p trend matrix (a column of ones for ordinary kriging).
@@ -143,6 +154,13 @@ print.kcv_prepared <- function(x, ...) {
     if (is.null(x$inp)) ", from a covariance matrix" else "", "\n",
     sep = ""
   )
+  # Objects saved before the condition number was stored have no `rcond`.
+  if (!is.null(x$rcond)) {
+    cat("Estimated reciprocal condition number of C: ",
+      format(signif(x$rcond, 2)), "\n",
+      sep = ""
+    )
+  }
   invisible(x)
 }
 
@@ -164,17 +182,43 @@ new_prepared <- function(res, F, U, beta, inp, matrices) {
   if (res$status != 0) {
     raise_status(res$status, NA, nrow(F), matrices)
   }
+  check_rcond(res$rcond)
   simple <- !is.null(beta)
   structure(
     list(
       Wt = res$Wt, B = res$B, S = res$S, G = res$G, U = U,
-      qdiag = res$qdiag, F = F,
+      qdiag = res$qdiag, rcond = res$rcond, F = F,
       beta = if (simple) store_beta(beta) else NULL,
       inp = inp
     ),
     class = "kcv_prepared"
   )
 }
+
+# Warns when the covariance matrix is so ill-conditioned that the loss of
+# accuracy can matter in practice: below the threshold
+# getOption("fastkcv.rcond_warn"), the error in the predictions relative to
+# the leave-one-out RMSE exceeded 1e-3 against a quadruple-precision oracle
+# (inst/bench/bench-conditioning.R; above it, at most 1.2e-5). Predictions
+# and variances have a relative error of up to about eps / rcond.
+check_rcond <- function(rcond) {
+  thr <- getOption("fastkcv.rcond_warn", rcond_warn_default)
+  if (!is.na(rcond) && rcond >= 0 && rcond < thr) {
+    warning(
+      "The covariance matrix is ill-conditioned (estimated reciprocal ",
+      "condition number ", format(signif(rcond, 2)), "), so predictions ",
+      "and variances may be accurate to only about ",
+      format(signif(.Machine$double.eps / rcond, 1)), " in relative terms. ",
+      "This is typical of a Gaussian (or very smooth) model without a ",
+      "nugget, or of nearly coincident locations; adding a small nugget ",
+      "usually helps.",
+      call. = FALSE
+    )
+  }
+  invisible(rcond)
+}
+
+rcond_warn_default <- 1e-13
 
 # A vector beta is kept as a double vector (as before); a p x T matrix as a
 # double matrix without dimnames.
@@ -422,17 +466,16 @@ check_trend <- function(F) {
   invisible(TRUE)
 }
 
-# OK/UK need a full-rank trend matrix. Checked with a pivoted QR (R's
-# default tolerance 1e-7, as in check_fold_identifiable()) before the
-# factorization. The C++ check of F'C^-1 F (status 2) cannot replace it:
-# with F itself, whether its Cholesky failed for a rank-deficient F depended
-# on the BLAS's rounding of Wt F (MKL and ATLAS accepted F = cbind(1, 1)),
-# and it now sees only the orthonormal basis of trend_basis().
+# OK/UK need a full-rank trend matrix, checked here with a pivoted QR (R's
+# default tolerance 1e-7) before the factorization. This is the only rank
+# check of the full F: the C++ engine sees only the orthonormal basis of
+# trend_basis(), and a Cholesky of F'C^-1 F with F itself would accept or
+# reject a rank-deficient F depending on the BLAS's rounding. (The per-fold
+# identifiability check is a different criterion; see identifiable_r().)
 # `uses_coords`: the trend formula uses the coordinate names (kcv() and
 # kcv_prepare() only). A polynomial in raw coordinates with a large offset
-# (e.g. UTM) is the common way to get here with a full-rank but
-# ill-conditioned F (unit square + 1e3, full quadratic: condition number of
-# the column-scaled F 1e8), so the message then suggests centering.
+# (e.g. UTM) is the usual way to get a full-rank but ill-conditioned F, so
+# the message then suggests centering the coordinates.
 check_trend_rank <- function(F, uses_coords = FALSE) {
   q <- qr(F)
   p <- ncol(F)
@@ -512,7 +555,7 @@ check_buffer_set_r <- function(F, I, i, radius, simple) {
   if (length(I) == n) {
     raise_buffer_status(3, i, length(I), radius, n)
   }
-  if (!simple && qr(F[-I, , drop = FALSE])$rank < ncol(F)) {
+  if (!simple && !identifiable_r(F, I)) {
     raise_buffer_status(4, i, length(I), radius, n)
   }
   invisible(TRUE)
@@ -656,10 +699,21 @@ check_fold_identifiable <- function(F, idx, f, simple) {
   if (n_left == 0) {
     err_every_obs(f)
   }
-  if (!simple && qr(F[-idx, , drop = FALSE])$rank < ncol(F)) {
+  if (!simple && !identifiable_r(F, idx)) {
     err_unidentifiable(f)
   }
   invisible(TRUE)
+}
+
+# The criterion of the C++ engine (identifiable() in src/engine.cpp), which
+# is authoritative: with U an orthonormal basis of the columns of F, the
+# trend is identifiable without rows `idx` when the smallest eigenvalue of
+# U[-idx, ]'U[-idx, ] is at least 1e-12 (smallest singular value 1e-6).
+identifiable_r <- function(F, idx) {
+  U <- qr.Q(qr(F))
+  ev <- eigen(crossprod(U[-idx, , drop = FALSE]), symmetric = TRUE,
+    only.values = TRUE)$values
+  min(ev) >= 1e-12
 }
 
 # Guard against inputs whose dense n x n matrices cannot reasonably be held
