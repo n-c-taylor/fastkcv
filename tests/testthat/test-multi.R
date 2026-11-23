@@ -449,7 +449,9 @@ test_that("errors for several responses", {
   expect_error(kcv_run(p, y = Yb), "Response `2` has 1 missing or non-finite")
   yb <- Y[, 1]
   yb[7] <- NA
-  expect_error(kcv_run(p, y = yb), "`y` has 1 missing or non-finite value")
+  expect_error(kcv_run(p, y = yb), "`y` has 1 missing value\\(s\\)")
+  expect_error(kcv_run(p, y = replace(Y[, 1], 2, Inf)),
+    "`y` has 1 infinite value\\(s\\)")
   expect_error(
     kcv_run(p, y = `colnames<-`(Y, c("a", "a"))),
     "`y` has duplicate column names"

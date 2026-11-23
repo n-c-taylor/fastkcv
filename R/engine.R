@@ -72,9 +72,16 @@
 #' loo <- kcv_engine_run(p, y, seq_len(50))
 #' k5 <- kcv_engine_run(p, y, rep(1:5, 10))
 kcv_engine <- function(C, F, y, folds, beta = NULL) {
-  args <- check_engine_args(C, F, y, folds, beta)
-  p <- kcv_engine_prepare(C, args$F, beta)
-  kcv_engine_run(p, args$y, folds)
+  # Each argument is checked once, the cheap ones (y, folds) before the
+  # factorization.
+  y <- as_response_matrix(y)
+  n <- nrow(y)
+  if (!is.matrix(C) || nrow(C) != n || ncol(C) != n) {
+    stop("`C` must be an n x n matrix with n = nrow(y).", call. = FALSE)
+  }
+  check_engine_y(y, n)
+  check_engine_folds(folds, n)
+  engine_run(engine_prepare(C, F, beta, ncol(y)), y, folds)
 }
 
 #' @rdname kcv_engine
@@ -83,6 +90,25 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
   if (!is.matrix(C) || nrow(C) != ncol(C)) {
     stop("`C` must be a square n x n matrix.", call. = FALSE)
   }
+  engine_prepare(C, F, beta)
+}
+
+#' @rdname kcv_engine
+#' @param prepared A `kcv_prepared` object from `kcv_engine_prepare()` or
+#'   [kcv_prepare()].
+#' @export
+kcv_engine_run <- function(prepared, y, folds, beta = NULL) {
+  check_prepared(prepared)
+  n <- length(prepared$qdiag)
+  y <- as_response_matrix(y)
+  check_engine_y(y, n)
+  check_engine_folds(folds, n)
+  engine_run(prepared, y, folds, beta)
+}
+
+# kcv_engine_prepare() for a square matrix C; `n_resp` (when known) is the
+# number of responses a p x T `beta` must match.
+engine_prepare <- function(C, F, beta, n_resp = NULL) {
   n <- nrow(C)
   F <- as.matrix(F)
   if (nrow(F) != n) {
@@ -94,7 +120,7 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
       call. = FALSE
     )
   }
-  check_beta(beta, F)
+  check_beta(beta, F, n_resp)
   if (is.null(beta)) check_trend_rank(F)
   check_memory(n, matrices = 2)
   # Assigning a storage mode copies C even when it is already double, which
@@ -106,16 +132,19 @@ kcv_engine_prepare <- function(C, F, beta = NULL) {
   new_prepared(res, F, U, beta, inp = NULL, matrices = 2)
 }
 
-#' @rdname kcv_engine
-#' @param prepared A `kcv_prepared` object from `kcv_engine_prepare()` or
-#'   [kcv_prepare()].
-#' @export
-kcv_engine_run <- function(prepared, y, folds, beta = NULL) {
-  check_prepared(prepared)
-  n <- length(prepared$qdiag)
-  if (!is.matrix(y)) {
-    y <- matrix(y, ncol = 1)
-  }
+# kcv_engine_run() for checked `y` (an n x T matrix) and `folds`.
+engine_run <- function(prepared, y, folds, beta = NULL) {
+  prepared <- use_beta(prepared, beta, ncol(y))
+  # The engine returns only the n x T predictions (and one variance vector).
+  check_run_memory(nrow(y), ncol(y), nrow(y), out_cols = 1)
+  run_prepared(prepared, y, folds)
+}
+
+as_response_matrix <- function(y) {
+  if (is.matrix(y)) y else matrix(y, ncol = 1)
+}
+
+check_engine_y <- function(y, n) {
   if (nrow(y) != n || !is.numeric(y)) {
     stop("`y` must be a numeric vector of length n or a matrix with n = ", n,
       " rows.",
@@ -125,15 +154,16 @@ kcv_engine_run <- function(prepared, y, folds, beta = NULL) {
   if (any(!is.finite(y))) {
     stop("`y` contains missing or non-finite values.", call. = FALSE)
   }
+  invisible(TRUE)
+}
+
+check_engine_folds <- function(folds, n) {
   if (length(folds) != n || anyNA(folds)) {
     stop("`folds` must have length n = ", n, " and no missing values.",
       call. = FALSE
     )
   }
-  prepared <- use_beta(prepared, beta, ncol(y))
-  # The engine returns only the n x T predictions (and one variance vector).
-  check_run_memory(n, ncol(y), n, out_cols = 1)
-  run_prepared(prepared, y, folds)
+  invisible(TRUE)
 }
 
 #' @export
@@ -166,11 +196,11 @@ print.kcv_prepared <- function(x, ...) {
 
 # Orthonormal basis U of the column space of F for ordinary/universal
 # kriging (empty for simple kriging). Q depends on F only through its column
-# space, so the factorization uses U in place of F: F'C^-1 F can be
-# numerically singular for a full-rank F whose columns differ in scale by
-# many orders of magnitude (a quadratic trend in UTM coordinates: F'C^-1 F
-# had rcond 1e-35), while cond(U'C^-1 U) <= cond(C). U also serves the
-# per-fold identifiability checks.
+# space, so the factorization uses U in place of F: cond(U'C^-1 U) <=
+# cond(C), whereas F'C^-1 F can be numerically singular for a full-rank F
+# whose columns differ in scale by many orders of magnitude (a polynomial
+# trend in large raw coordinates). U also serves the per-fold
+# identifiability checks.
 trend_basis <- function(F, beta) {
   if (is.null(beta)) qr.Q(qr(F)) else matrix(0, 0, 0)
 }
@@ -220,8 +250,8 @@ check_rcond <- function(rcond) {
 
 rcond_warn_default <- 1e-13
 
-# A vector beta is kept as a double vector (as before); a p x T matrix as a
-# double matrix without dimnames.
+# A vector beta is kept as a double vector, a p x T matrix as a double
+# matrix without dimnames (beta_cpp() turns either into the C++ form).
 store_beta <- function(beta) {
   if (is.matrix(beta)) {
     matrix(as.double(beta), nrow(beta), ncol(beta))
@@ -324,6 +354,7 @@ run_buffer_prepared <- function(p, y, radius, targets = NULL,
   }
   pred <- res$pred
   dimnames(pred) <- list(rownames(y)[targets], colnames(y))
+  # `method` (the strategy used) is read only by the tests and benchmarks.
   list(pred = pred, var = res$var, folds = targets,
     n_heldout = res$size, rows = rows, method = res$method)
 }
@@ -373,8 +404,8 @@ run_prepared <- function(p, y, folds) {
   storage.mode(y) <- "double"
   simple <- !is.null(p$beta)
   labels <- sort(unique(folds))
-  # One pass, in `labels` order (`which(folds == f)` per fold is O(n^2) for
-  # leave-one-out and left about one n x n matrix of garbage).
+  # All folds in one pass, in `labels` order: O(n) time and memory, also for
+  # leave-one-out (a which() per fold would be O(n^2)).
   fold_idx <- unname(split(seq_along(folds) - 1L, match(folds, labels)))
   res <- run_cpp(
     p$Wt, p$B, p$S, p$G, p$U, p$qdiag, p$F, y, fold_idx, simple,
@@ -489,231 +520,6 @@ check_trend_rank <- function(F, uses_coords = FALSE) {
     err_rank_deficient(cols, cond, uses_coords)
   }
   invisible(TRUE)
-}
-
-#' Exact kriging cross-validation in pure R (internal oracle)
-#'
-#' The same algebra as [kcv_engine()], written with base R matrix functions
-#' and an explicit \eqn{Q}. Used to test the C++ engine.
-#'
-#' @inheritParams kcv_engine
-#' @noRd
-kcv_engine_r <- function(C, F, y, folds, beta = NULL) {
-  args <- check_engine_args(C, F, y, folds, beta)
-  y <- args$y
-  F <- args$F
-
-  qp <- q_parts_r(C, F, y, beta)
-  Q <- qp$Q
-  Qy <- qp$Qy
-
-  n <- nrow(y)
-  pred <- matrix(NA_real_, n, ncol(y), dimnames = dimnames(y))
-  var <- rep(NA_real_, n)
-  for (f in sort(unique(folds))) {
-    idx <- which(folds == f)
-    check_fold_identifiable(F, idx, f, simple = !is.null(beta))
-    V <- fold_inverse(Q[idx, idx, drop = FALSE], f)
-    pred[idx, ] <- y[idx, , drop = FALSE] - V %*% Qy[idx, , drop = FALSE]
-    var[idx] <- diag(V)
-  }
-  list(pred = pred, var = var, folds = folds)
-}
-
-# Explicit Q and Q y (Q (y - F beta) for simple kriging) for the R oracles.
-q_parts_r <- function(C, F, y, beta) {
-  R <- tryCatch(chol(C), error = function(e) err_not_pd())
-  Ci <- chol2inv(R)
-  if (is.null(beta)) {
-    CiF <- Ci %*% F
-    RA <- tryCatch(chol(crossprod(F, CiF)), error = function(e) {
-      check_trend_rank(F)
-      err_trend_singular()
-    })
-    G <- backsolve(RA, t(CiF), transpose = TRUE)
-    Q <- Ci - crossprod(G)
-    Qy <- Q %*% y
-  } else {
-    Q <- Ci
-    Qy <- Q %*% (y - drop(F %*% beta))
-  }
-  list(Q = Q, Qy = Qy)
-}
-
-# Hold-out sets of buffered leave-one-out: element i holds the (sorted)
-# indices of the points within Euclidean distance `radius` of point i,
-# including i. Pure R, independent of the C++ neighbor search.
-buffer_sets_r <- function(coords, radius) {
-  D <- as.matrix(stats::dist(coords))
-  lapply(seq_len(nrow(D)), function(i) which(D[i, ] <= radius))
-}
-
-# Checks shared by the buffered-LOO oracles, with the same statuses and
-# messages as the C++ engine.
-check_buffer_set_r <- function(F, I, i, radius, simple) {
-  n <- nrow(F)
-  if (length(I) == n) {
-    raise_buffer_status(3, i, length(I), radius, n)
-  }
-  if (!simple && !identifiable_r(F, I)) {
-    raise_buffer_status(4, i, length(I), radius, n)
-  }
-  invisible(TRUE)
-}
-
-#' Buffered leave-one-out in pure R (internal oracles)
-#'
-#' Point `i` is predicted from the observations outside `sets[[i]]` (which
-#' contains `i`). `kcv_buffer_r()` uses the explicit \eqn{Q} as
-#' `kcv_engine_r()` does; `kcv_buffer_reference()` refits kriging on the
-#' remaining data as `kcv_reference()` does. Used to test the C++ engine.
-#'
-#' @inheritParams kcv_engine
-#' @param sets List of hold-out index sets, e.g. from `buffer_sets_r()`.
-#' @param radius Used only in error messages.
-#' @noRd
-kcv_buffer_r <- function(C, F, y, sets, beta = NULL, radius = NA) {
-  args <- check_engine_args(C, F, y, seq_along(sets), beta)
-  y <- args$y
-  F <- args$F
-  qp <- q_parts_r(C, F, y, beta)
-  n <- nrow(y)
-  pred <- matrix(NA_real_, n, ncol(y), dimnames = dimnames(y))
-  var <- rep(NA_real_, n)
-  for (i in seq_len(n)) {
-    I <- sets[[i]]
-    check_buffer_set_r(F, I, i, radius, simple = !is.null(beta))
-    Rq <- tryCatch(chol(qp$Q[I, I, drop = FALSE]), error = function(e) {
-      raise_buffer_status(5, i, length(I), radius, n)
-    })
-    V <- chol2inv(Rq)
-    k <- match(i, I)
-    pred[i, ] <- y[i, ] - V[k, ] %*% qp$Qy[I, , drop = FALSE]
-    var[i] <- V[k, k]
-  }
-  list(pred = pred, var = var, folds = seq_len(n),
-    n_heldout = lengths(sets))
-}
-
-#' @rdname kcv_buffer_r
-#' @noRd
-kcv_buffer_reference <- function(C, F, y, sets, beta = NULL, radius = NA) {
-  args <- check_engine_args(C, F, y, seq_along(sets), beta)
-  y <- args$y
-  F <- args$F
-  n <- nrow(y)
-  pred <- matrix(NA_real_, n, ncol(y))
-  var <- rep(NA_real_, n)
-  for (i in seq_len(n)) {
-    I <- sets[[i]]
-    check_buffer_set_r(F, I, i, radius, simple = !is.null(beta))
-    r <- setdiff(seq_len(n), I)
-    k <- krige_subset_r(C, F, y, r, i, beta)
-    pred[i, ] <- k$pred
-    var[i] <- k$var
-  }
-  list(pred = pred, var = var, folds = seq_len(n),
-    n_heldout = lengths(sets))
-}
-
-# Kriging prediction at rows `I` from rows `r`, with textbook formulas and
-# solve(): the body of kcv_reference() for one fold.
-krige_subset_r <- function(C, F, y, r, I, beta) {
-  Crr <- C[r, r, drop = FALSE]
-  Cri <- C[r, I, drop = FALSE]
-  Fr <- F[r, , drop = FALSE]
-  Fi <- F[I, , drop = FALSE]
-  W <- solve(Crr, Cri) # simple kriging weights, |r| x |I|
-  if (is.null(beta)) {
-    CrrF <- solve(Crr, Fr)
-    A <- crossprod(Fr, CrrF)
-    b <- solve(A, crossprod(CrrF, y[r, , drop = FALSE]))
-  } else {
-    b <- matrix(beta, ncol(F), ncol(y))
-  }
-  pred <- Fi %*% b + crossprod(W, y[r, , drop = FALSE] - Fr %*% b)
-  V <- C[I, I, drop = FALSE] - crossprod(Cri, W)
-  if (is.null(beta)) {
-    D <- Fi - crossprod(W, Fr)
-    V <- V + D %*% solve(A, t(D))
-  }
-  list(pred = pred, var = diag(V))
-}
-
-#' Naive kriging cross-validation (internal oracle)
-#'
-#' Refits simple or universal kriging on the data outside each fold with
-#' textbook formulas and `solve()`. Slow, used only to test [kcv_engine()].
-#'
-#' @inheritParams kcv_engine
-#' @noRd
-kcv_reference <- function(C, F, y, folds, beta = NULL) {
-  args <- check_engine_args(C, F, y, folds, beta)
-  y <- args$y
-  F <- args$F
-  n <- nrow(y)
-  pred <- matrix(NA_real_, n, ncol(y))
-  var <- rep(NA_real_, n)
-  for (f in sort(unique(folds))) {
-    I <- which(folds == f)
-    r <- setdiff(seq_len(n), I)
-    check_fold_identifiable(F, I, f, simple = !is.null(beta))
-    k <- krige_subset_r(C, F, y, r, I, beta)
-    pred[I, ] <- k$pred
-    var[I] <- k$var
-  }
-  list(pred = pred, var = var, folds = folds)
-}
-
-# Inverse of Q[I, I] via its Cholesky factor. Q[I, I] is positive definite
-# whenever the trend is identifiable without fold I (checked beforehand), so
-# failure here signals numerical singularity.
-fold_inverse <- function(Qii, f) {
-  Rq <- tryCatch(chol(Qii), error = function(e) err_singular(f))
-  chol2inv(Rq)
-}
-
-check_engine_args <- function(C, F, y, folds, beta) {
-  if (!is.matrix(y)) {
-    y <- matrix(y, ncol = 1)
-  }
-  n <- nrow(y)
-  if (!is.matrix(C) || nrow(C) != n || ncol(C) != n) {
-    stop("`C` must be an n x n matrix with n = nrow(y).", call. = FALSE)
-  }
-  F <- as.matrix(F)
-  if (nrow(F) != n) {
-    stop("`F` must have n = nrow(y) rows.", call. = FALSE)
-  }
-  if (length(folds) != n || anyNA(folds)) {
-    stop("`folds` must have length n = nrow(y) and no missing values.",
-      call. = FALSE
-    )
-  }
-  check_beta(beta, F, ncol(y))
-  list(y = y, F = F)
-}
-
-check_fold_identifiable <- function(F, idx, f, simple) {
-  n_left <- nrow(F) - length(idx)
-  if (n_left == 0) {
-    err_every_obs(f)
-  }
-  if (!simple && !identifiable_r(F, idx)) {
-    err_unidentifiable(f)
-  }
-  invisible(TRUE)
-}
-
-# The criterion of the C++ engine (identifiable() in src/engine.cpp), which
-# is authoritative: with U an orthonormal basis of the columns of F, the
-# trend is identifiable without rows `idx` when the smallest eigenvalue of
-# U[-idx, ]'U[-idx, ] is at least 1e-12 (smallest singular value 1e-6).
-identifiable_r <- function(F, idx) {
-  U <- qr.Q(qr(F))
-  ev <- eigen(crossprod(U[-idx, , drop = FALSE]), symmetric = TRUE,
-    only.values = TRUE)$values
-  min(ev) >= 1e-12
 }
 
 # Guard against inputs whose dense n x n matrices cannot reasonably be held

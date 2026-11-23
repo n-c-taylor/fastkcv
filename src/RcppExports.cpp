@@ -12,21 +12,19 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // cov_matrix_cpp
-Rcpp::NumericMatrix cov_matrix_cpp(Rcpp::NumericMatrix coords1, Rcpp::NumericMatrix coords2, Rcpp::IntegerVector type, Rcpp::NumericVector psill, Rcpp::NumericVector range, Rcpp::NumericVector kappa, Rcpp::NumericVector ang1, Rcpp::NumericVector anis1, bool symmetric);
-RcppExport SEXP _fastkcv_cov_matrix_cpp(SEXP coords1SEXP, SEXP coords2SEXP, SEXP typeSEXP, SEXP psillSEXP, SEXP rangeSEXP, SEXP kappaSEXP, SEXP ang1SEXP, SEXP anis1SEXP, SEXP symmetricSEXP) {
+Rcpp::NumericMatrix cov_matrix_cpp(Rcpp::NumericMatrix coords, Rcpp::IntegerVector type, Rcpp::NumericVector psill, Rcpp::NumericVector range, Rcpp::NumericVector kappa, Rcpp::NumericVector ang1, Rcpp::NumericVector anis1);
+RcppExport SEXP _fastkcv_cov_matrix_cpp(SEXP coordsSEXP, SEXP typeSEXP, SEXP psillSEXP, SEXP rangeSEXP, SEXP kappaSEXP, SEXP ang1SEXP, SEXP anis1SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type coords1(coords1SEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type coords2(coords2SEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type coords(coordsSEXP);
     Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type type(typeSEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type psill(psillSEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type range(rangeSEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type kappa(kappaSEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type ang1(ang1SEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type anis1(anis1SEXP);
-    Rcpp::traits::input_parameter< bool >::type symmetric(symmetricSEXP);
-    rcpp_result_gen = Rcpp::wrap(cov_matrix_cpp(coords1, coords2, type, psill, range, kappa, ang1, anis1, symmetric));
+    rcpp_result_gen = Rcpp::wrap(cov_matrix_cpp(coords, type, psill, range, kappa, ang1, anis1));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -133,7 +131,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_fastkcv_cov_matrix_cpp", (DL_FUNC) &_fastkcv_cov_matrix_cpp, 9},
+    {"_fastkcv_cov_matrix_cpp", (DL_FUNC) &_fastkcv_cov_matrix_cpp, 7},
     {"_fastkcv_prepare_model_cpp", (DL_FUNC) &_fastkcv_prepare_model_cpp, 9},
     {"_fastkcv_prepare_matrix_cpp", (DL_FUNC) &_fastkcv_prepare_matrix_cpp, 3},
     {"_fastkcv_run_cpp", (DL_FUNC) &_fastkcv_run_cpp, 11},

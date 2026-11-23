@@ -60,9 +60,9 @@ Rcpp::List fail_buffer(int status, arma::uword i, arma::uword m) {
 // Armadillo's solve() without solve_opts::no_approx prints a warning to the
 // R console (not an R condition, so R's handlers cannot catch it) and
 // returns an approximate (SVD) solution. Every triangular solve therefore
-// uses the bool form with no_approx, which returns false instead. It takes
-// the same LAPACK path (dtrtrs with dtrcon), so a successful solve gives the
-// same result as before, and the caller maps a failure to a status code.
+// uses the bool form with no_approx, which returns false instead (the
+// LAPACK path is the same, dtrtrs with dtrcon), and the caller maps a
+// failure to a status code.
 bool solve_tri(arma::mat& X, const arma::mat& A, const arma::mat& B,
                bool upper) {
   return upper ? arma::solve(X, arma::trimatu(A), B, arma::solve_opts::no_approx)
@@ -172,7 +172,7 @@ double q_entry(const arma::mat& Wt, const arma::mat& G, arma::uword j,
   const double* b = Wt.colptr(k);
   // Four independent partial sums: a single running sum is limited by the
   // latency of each add (the compiler may not reorder a floating-point
-  // reduction), which made this loop the bottleneck of the pair cache.
+  // reduction), and this loop dominates the cost of the pair cache.
   double s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0;
   arma::uword r = std::max(j, k);
   for (; r + 4 <= n; r += 4) {
@@ -260,10 +260,9 @@ Rcpp::List factor_inplace(Rcpp::NumericMatrix& Wr, const arma::mat& F,
   arma::mat B, S, G;
   if (!simple) {
     // F is an orthonormal basis of the trend here (trend_basis() in R), so
-    // cond(B'B) <= cond(C). Below rcond eps, Armadillo's triangular solve()
-    // with S would print a warning and switch to an approximate (SVD)
-    // solution; a raw quadratic trend in UTM coordinates had rcond(S) =
-    // 3e-18 and predictions off by 0.2. Refuse instead.
+    // cond(B'B) <= cond(C). A factor S with rcond below eps would make the
+    // solves with it inaccurate, so it is refused (status 2) rather than
+    // passed to an approximate solution.
     B = Wt * F;
     if (!arma::chol(S, arma::symmatu(B.t() * B))) return fail(2, 0);
     // rcond of S' (1-norm), the matrix that solve() below works with.
@@ -350,7 +349,7 @@ Rcpp::List prepare_model_cpp(const Rcpp::NumericMatrix& coords,
     std::vector<fastkcv::Component> comp =
         fastkcv::make_components(type, psill, range, kappa, ang1, anis1);
     Rcpp::NumericMatrix W(Rcpp::no_init(coords.nrow(), coords.nrow()));
-    fastkcv::fill_cov(W.begin(), coords, coords, comp, true);
+    fastkcv::fill_cov(W.begin(), coords, comp);
     return factor_inplace(W, F, simple);
   } catch (std::bad_alloc&) {
     return fail(6, 0);
@@ -362,8 +361,8 @@ Rcpp::List prepare_model_cpp(const Rcpp::NumericMatrix& coords,
 Rcpp::List prepare_matrix_cpp(const Rcpp::NumericMatrix& C,
                               const arma::mat& F, bool simple) {
   try {
-    // One explicit copy: `W = Rcpp::clone(C)` duplicated the matrix twice
-    // (measured with tracemem), so the peak was three n x n matrices.
+    // One explicit copy into an uninitialized matrix, so the peak is two
+    // n x n matrices (C and the factor).
     const int n = C.nrow();
     const int status = check_matrix(C.begin(), n);
     if (status != 0) return fail(status, 0);
@@ -618,8 +617,8 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
       arma::mat Qii;
       if (use_pairs) {
         // Row a: the partners of idx[a] (sorted) are walked in step with
-        // idx[a..m) (also sorted), a linear merge instead of one binary
-        // search per entry (which was the bulk of the time for large m).
+        // idx[a..m) (also sorted), a linear merge (O(m + partners) per row
+        // rather than a binary search per entry).
         Qii.set_size(m, m);
         for (arma::uword a = 0; a < m; ++a) {
           const arma::uword j = idx[a];
@@ -657,7 +656,7 @@ Rcpp::List run_buffer_cpp(const Rcpp::NumericMatrix& Wr, const arma::mat& B,
   }
 }
 
-// Test hook for the numerically singular Q[I, I] branch of
+// Test-only hook for the numerically singular Q[I, I] branch of
 // run_buffer_cpp(): the row of Q[I, I]^{-1} for position `pos` (0-based),
 // or NULL.
 // [[Rcpp::export]]
@@ -667,7 +666,7 @@ SEXP buffer_solve_cpp(const arma::mat& Qii, int pos) {
   return Rcpp::wrap(x);
 }
 
-// Test hook for the numerically singular Q[I, I] branch.
+// Test-only hook for the numerically singular Q[I, I] branch of run_cpp().
 // [[Rcpp::export]]
 SEXP fold_inverse_cpp(const arma::mat& Qii) {
   arma::mat V;

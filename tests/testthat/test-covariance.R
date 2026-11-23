@@ -76,12 +76,6 @@ test_that("nested components with different anisotropies are handled", {
   expect_close(covariance_matrix(m, xy), gstat_pairwise(m, xy))
 })
 
-test_that("cross-covariance between two coordinate sets", {
-  m <- gstat::vgm(1, "Exp", 200, 0.1)
-  C <- covariance_matrix(m, xy)
-  expect_equal(covariance_matrix(m, xy[1:4, ], xy[5:15, ]), C[1:4, 5:15])
-})
-
 # The C++ covariance against the variogramLine() version (covariance_matrix_r)
 # for every model, nested and anisotropic case, on more points.
 xy2 <- withr::with_seed(7, matrix(stats::runif(120, 0, 800), ncol = 2))
@@ -128,16 +122,6 @@ test_that("C++ covariance matches the variogramLine() version", {
     expect_close(covariance_matrix(m, xy2), covariance_matrix_r(m, xy2),
       label = nm
     )
-    expect_equal(
-      covariance_matrix(m, xy2[1:25, ], xy2[26:60, ]),
-      covariance_matrix_r(m, xy2[1:25, ], xy2[26:60, ]),
-      tolerance = tol, label = paste(nm, "cross")
-    )
-    expect_close(
-      covariance_matrix(m, xy2[1:25, ], xy2[26:60, ]),
-      covariance_matrix_r(m, xy2[1:25, ], xy2[26:60, ]),
-      label = paste(nm, "cross")
-    )
   }
   for (ang in c(0, 45, 90)) {
     for (ratio in c(1, 0.5, 0.2)) {
@@ -161,14 +145,13 @@ test_that("C++ covariance is exactly symmetric with the total sill on the diagon
   expect_identical(diag(C), rep(sum(m$psill), nrow(xy2)))
 })
 
-test_that("cross-covariance applies the nugget only to coincident points", {
+test_that("the nugget applies only to coincident points", {
+  # A tiny lag already drops the nugget, as in gstat's variogramLine().
   m <- gstat::vgm(1, "Exp", 200, 0.25)
-  K <- covariance_matrix(m, xy2[1:5, ], xy2[c(3, 10, 1), ])
-  expect_equal(K[3, 1], 1.25)
-  expect_equal(K[1, 3], 1.25)
-  expect_lt(K[2, 2], 1)
-  expect_equal(K, covariance_matrix_r(m, xy2[1:5, ], xy2[c(3, 10, 1), ]),
-    tolerance = tol)
+  C <- covariance_matrix(m, rbind(c(0, 0), c(1e-9, 0), c(5, 5)))
+  expect_equal(diag(C), rep(1.25, 3))
+  expect_lt(C[1, 2], 1)
+  expect_gt(C[1, 2], 1 - 1e-10)
 })
 
 test_that("Matern with large kappa stays finite where gstat returns NaN", {

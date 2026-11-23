@@ -112,6 +112,6 @@ cv_perm <- kcv_run(p, nfold = 10, y = perm)
 summary(kcv_metrics(cv_perm)$rmse)
 }
 \seealso{
-\code{\link[=kcv_engine_prepare]{kcv_engine_prepare()}} for a precomputed covariance matrix; the
-"Performance" section of \code{\link[=kcv]{kcv()}}.
+\code{\link[=kcv_engine_prepare]{kcv_engine_prepare()}} for a precomputed covariance matrix;
+\code{vignette("fastkcv")} for timings.
 }

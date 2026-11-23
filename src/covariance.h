@@ -162,35 +162,23 @@ inline std::vector<Component> make_components(const Rcpp::IntegerVector& type,
   return comp;
 }
 
-// Writes the n1 x n2 covariance matrix (column-major) into `out`. With
-// `symmetric`, coords2 is ignored, only i < j is evaluated and mirrored, and
-// the diagonal is the total sill.
-inline void fill_cov(double* out, const Rcpp::NumericMatrix& coords1,
-                     const Rcpp::NumericMatrix& coords2,
-                     const std::vector<Component>& comp, bool symmetric) {
-  const R_xlen_t n1 = coords1.nrow();
-  if (symmetric) {
-    double total = 0.0;
-    for (const Component& c : comp) total += c.psill;
-    for (R_xlen_t j = 0; j < n1; ++j) {
-      out[j + j * n1] = total;
-      for (R_xlen_t i = j + 1; i < n1; ++i) {
-        double v = pair_cov(comp, coords1(i, 0) - coords1(j, 0),
-                            coords1(i, 1) - coords1(j, 1));
-        out[i + j * n1] = v;
-        out[j + i * n1] = v;
-      }
-      if (j % 256 == 0) Rcpp::checkUserInterrupt();
+// Writes the n x n covariance matrix of `coords` (column-major) into `out`:
+// the diagonal is the total sill, and only i < j is evaluated and mirrored,
+// so the matrix is exactly symmetric.
+inline void fill_cov(double* out, const Rcpp::NumericMatrix& coords,
+                     const std::vector<Component>& comp) {
+  const R_xlen_t n = coords.nrow();
+  double total = 0.0;
+  for (const Component& c : comp) total += c.psill;
+  for (R_xlen_t j = 0; j < n; ++j) {
+    out[j + j * n] = total;
+    for (R_xlen_t i = j + 1; i < n; ++i) {
+      double v = pair_cov(comp, coords(i, 0) - coords(j, 0),
+                          coords(i, 1) - coords(j, 1));
+      out[i + j * n] = v;
+      out[j + i * n] = v;
     }
-  } else {
-    const R_xlen_t n2 = coords2.nrow();
-    for (R_xlen_t j = 0; j < n2; ++j) {
-      for (R_xlen_t i = 0; i < n1; ++i) {
-        out[i + j * n1] = pair_cov(comp, coords1(i, 0) - coords2(j, 0),
-                                   coords1(i, 1) - coords2(j, 1));
-      }
-      if (j % 256 == 0) Rcpp::checkUserInterrupt();
-    }
+    if (j % 256 == 0) Rcpp::checkUserInterrupt();
   }
 }
 

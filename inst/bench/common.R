@@ -110,11 +110,11 @@ kcv_r <- function(formula, locations, data, model, folds,
   C <- if (engine == "refit") {
     fastkcv:::covariance_matrix(model, inp$coords)
   } else {
-    fastkcv:::covariance_matrix_r(model, inp$coords)
+    oracles$covariance_matrix_r(model, inp$coords)
   }
   f <- switch(engine,
-    engine_r = fastkcv:::kcv_engine_r,
-    reference = fastkcv:::kcv_reference,
+    engine_r = oracles$kcv_engine_r,
+    reference = oracles$kcv_reference,
     refit = oracles$kcv_refit_chol
   )
   fastkcv:::build_output(inp, f(C, inp$F, inp$y, folds))

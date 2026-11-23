@@ -97,7 +97,7 @@ for (n in ns) {
           folds = f))
         gs <- attempt(krige.cv(formulas[[fn]], ~ x + y, d, model = cs$model,
           nfold = f, verbose = FALSE))
-        rf <- attempt(fastkcv:::kcv_reference(C, F, d$z, f))
+        rf <- attempt(oracles$kcv_reference(C, F, d$z, f))
         e_fk <- errs(fk, truth)
         e_gs <- errs(gs, truth)
         e_rf <- errs(rf, truth)

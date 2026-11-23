@@ -293,8 +293,19 @@ response takes 233 to 317 s.
 The reference BLAS that ships with many R builds is single-threaded and
 much slower on these operations than an optimized BLAS such as OpenBLAS,
 Intel MKL or Apple's Accelerate. Check which one R uses with
-`extSoftVersion()["BLAS"]`; see `?kcv` (section "Performance") for how to
-switch. The many small matrix operations of buffered leave-one-out do not
+`extSoftVersion()["BLAS"]` or `sessionInfo()`. To switch:
+
+* Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
+  (`sudo apt install libopenblas0-pthread`); the system's alternatives
+  mechanism switches R to it without reinstalling anything.
+* macOS: the CRAN build of R can use Apple's Accelerate framework; see the
+  R for macOS FAQ.
+* Windows: see "R Installation and Administration" for replacing R's
+  BLAS.
+
+Multithreaded BLAS libraries use all cores by default; when running
+several R processes in parallel, limit the threads (for OpenBLAS, the
+environment variable `OPENBLAS_NUM_THREADS`). The many small matrix operations of buffered leave-one-out do not
 benefit from BLAS threads. OpenBLAS starts one thread per logical CPU; on
 CPUs with simultaneous multithreading, one thread per physical core can be
 much faster (`OPENBLAS_NUM_THREADS=4` on the 4-core, 8-thread laptop above:

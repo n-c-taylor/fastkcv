@@ -130,35 +130,13 @@
 #'
 #' @section Performance:
 #' Almost all of the time goes into one dense Cholesky factorization and
-#' triangular inverse, which R delegates to its BLAS/LAPACK libraries. The
-#' reference BLAS shipped with many R builds is single-threaded and slow; an
-#' optimized BLAS is typically many times faster on these operations. Check
-#' which one R uses with `extSoftVersion()["BLAS"]` or `sessionInfo()`.
-#'
-#' * Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
-#'   (`sudo apt install libopenblas0-pthread`); the system's alternatives
-#'   mechanism switches R to it without reinstalling anything.
-#' * macOS: the CRAN build of R can use Apple's Accelerate framework; see the
-#'   R for macOS FAQ for how to switch.
-#' * Windows: see "R Installation and Administration" for replacing R's
-#'   BLAS.
-#'
-#' Multithreaded BLAS libraries use all cores by default; when running
-#' several R processes in parallel, limit the threads (for OpenBLAS, the
-#' environment variable `OPENBLAS_NUM_THREADS`). OpenBLAS starts one thread
-#' per logical CPU, and on CPUs with simultaneous multithreading
-#' (hyper-threading) one thread per physical core can be much faster: on a
-#' 4-core, 8-thread laptop, `OPENBLAS_NUM_THREADS=4` made 10-fold `kcv()`
-#' 1.6 to 2 times faster than the default at n = 1,500 to 5,000.
-#'
-#' The factorization depends only on the locations, the model and the trend,
-#' not on the folds. To cross-validate several fold schemes for the same
-#' data, call [kcv_prepare()] once and [kcv_run()] for each scheme. Each
-#' fold of size \eqn{m} adds about \eqn{m^2 n} operations, so a few large
-#' folds cost the most: with 2 folds, the folds take about as long as the
-#' factorization.
-#'
-#' See [kcv_engine()] for memory requirements.
+#' triangular inverse, done by R's BLAS and LAPACK libraries, so an optimized
+#' BLAS (OpenBLAS, Intel MKL, Apple's Accelerate) makes `kcv()` many times
+#' faster than the reference BLAS. Timings, how to switch the BLAS, thread
+#' settings, the cost of few large folds, and comparisons with other
+#' packages are in `vignette("fastkcv")`; memory requirements are in
+#' [kcv_engine()]. To cross-validate several fold schemes from one
+#' factorization, use [kcv_prepare()] and [kcv_run()].
 #'
 #' @section Ill-conditioned covariance matrices:
 #' The factorization also estimates the reciprocal condition number of the
@@ -234,8 +212,8 @@ kcv <- function(formula, locations, data, model, nfold, folds = NULL,
 #' @param ... As in [kcv()].
 #' @return `kcv_prepare()`: a `kcv_prepared` object. `kcv_run()`: the same
 #'   output as [kcv()].
-#' @seealso [kcv_engine_prepare()] for a precomputed covariance matrix; the
-#'   "Performance" section of [kcv()].
+#' @seealso [kcv_engine_prepare()] for a precomputed covariance matrix;
+#'   `vignette("fastkcv")` for timings.
 #' @export
 #' @examples
 #' data(meuse, package = "sp")
@@ -311,14 +289,7 @@ new_responses <- function(inp, y) {
     }
     inp$y <- check_responses(y, nm, "`y`")
   } else {
-    if (any(!is.finite(y))) {
-      stop(
-        "`y` has ", sum(!is.finite(y)), " missing or non-finite value(s); ",
-        "every observation of the prepared data needs a response value.",
-        call. = FALSE
-      )
-    }
-    inp$y <- matrix(as.double(y), ncol = 1)
+    inp$y <- check_responses(as.vector(y), what = "`y`")
   }
   inp
 }
@@ -449,11 +420,15 @@ resolve_nfold <- function(nfold, n) {
       call. = FALSE
     )
   }
-  if (nfold < n) {
-    sample(nfold, n, replace = TRUE)
-  } else {
-    seq_len(n)
-  }
+  draw_folds(nfold, n)
+}
+
+# Random fold assignment exactly as krige.cv(nfold = k) draws it:
+# sample(k, n, replace = TRUE) for k < n (fold sizes vary and a fold may be
+# empty), leave-one-out for k >= n. Shared by kcv() and fold_random(), so
+# that the same seed gives the same folds in fastkcv and gstat.
+draw_folds <- function(k, n) {
+  if (k < n) sample(k, n, replace = TRUE) else seq_len(n)
 }
 
 check_dots <- function(...) {

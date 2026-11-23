@@ -71,11 +71,7 @@ fold_random <- function(locations, data = NULL, k) {
   n <- nrow(fold_coords(locations, data))
   if (missing(k)) stop("`k` (the number of folds) is required.", call. = FALSE)
   check_count(k, "k")
-  if (k < n) {
-    sample(k, n, replace = TRUE)
-  } else {
-    seq_len(n)
-  }
+  draw_folds(k, n)
 }
 
 #' @rdname folds

@@ -42,26 +42,12 @@ parse_inputs <- function(formula, locations, data) {
     if (!is.matrix(y)) y <- mf[[1L]]
     y <- check_responses(y, response_names(formula, y), "The response")
   } else {
-    if (!is.numeric(y) || !is.null(dim(y))) {
+    if (!is.null(dim(y))) {
       stop("The response in `formula` must be a numeric vector.",
         call. = FALSE
       )
     }
-    if (anyNA(y)) {
-      stop(
-        "The response has ", sum(is.na(y)), " missing value(s). ",
-        "Remove them before cross-validation.",
-        call. = FALSE
-      )
-    }
-    if (any(is.infinite(y))) {
-      stop(
-        "The response has ", sum(is.infinite(y)), " infinite value(s) ",
-        "(e.g. log(0)). Remove them before cross-validation.",
-        call. = FALSE
-      )
-    }
-    y <- matrix(as.numeric(y), ncol = 1)
+    y <- check_responses(y, what = "The response")
   }
   F <- stats::model.matrix(stats::delete.response(stats::terms(formula)), mf)
   if (any(!is.finite(F))) {
@@ -107,9 +93,32 @@ is_cbind <- function(lhs) {
   is.call(lhs) && identical(lhs[[1]], as.name("cbind"))
 }
 
-# Checks an n x T matrix of responses and returns it as a double matrix
-# with column names `nm` and no row names. `what` starts the messages.
-check_responses <- function(y, nm, what) {
+# Checks the responses and returns them as a double matrix without row
+# names: a vector (one response) as an n x 1 matrix, an n x T matrix with
+# column names `nm`. `what` starts the messages. Every response must be
+# observed at every location; a single response reports missing and
+# infinite values separately (log(0) is the usual source of the latter).
+check_responses <- function(y, nm = NULL, what) {
+  if (is.null(dim(y))) {
+    if (!is.numeric(y)) {
+      stop(what, " must be a numeric vector or matrix.", call. = FALSE)
+    }
+    if (anyNA(y)) {
+      stop(
+        what, " has ", sum(is.na(y)), " missing value(s). ",
+        "Remove them before cross-validation.",
+        call. = FALSE
+      )
+    }
+    if (any(is.infinite(y))) {
+      stop(
+        what, " has ", sum(is.infinite(y)), " infinite value(s) ",
+        "(e.g. log(0)). Remove them before cross-validation.",
+        call. = FALSE
+      )
+    }
+    return(matrix(as.double(y), ncol = 1))
+  }
   if (!is.numeric(y) || length(dim(y)) != 2) {
     stop(what, " must be a numeric vector or matrix.", call. = FALSE)
   }

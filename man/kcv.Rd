@@ -166,36 +166,13 @@ one level of a factor.
 \section{Performance}{
 
 Almost all of the time goes into one dense Cholesky factorization and
-triangular inverse, which R delegates to its BLAS/LAPACK libraries. The
-reference BLAS shipped with many R builds is single-threaded and slow; an
-optimized BLAS is typically many times faster on these operations. Check
-which one R uses with \code{extSoftVersion()["BLAS"]} or \code{sessionInfo()}.
-\itemize{
-\item Linux (Debian/Ubuntu): install an optimized BLAS such as OpenBLAS
-(\verb{sudo apt install libopenblas0-pthread}); the system's alternatives
-mechanism switches R to it without reinstalling anything.
-\item macOS: the CRAN build of R can use Apple's Accelerate framework; see the
-R for macOS FAQ for how to switch.
-\item Windows: see "R Installation and Administration" for replacing R's
-BLAS.
-}
-
-Multithreaded BLAS libraries use all cores by default; when running
-several R processes in parallel, limit the threads (for OpenBLAS, the
-environment variable \code{OPENBLAS_NUM_THREADS}). OpenBLAS starts one thread
-per logical CPU, and on CPUs with simultaneous multithreading
-(hyper-threading) one thread per physical core can be much faster: on a
-4-core, 8-thread laptop, \code{OPENBLAS_NUM_THREADS=4} made 10-fold \code{kcv()}
-1.6 to 2 times faster than the default at n = 1,500 to 5,000.
-
-The factorization depends only on the locations, the model and the trend,
-not on the folds. To cross-validate several fold schemes for the same
-data, call \code{\link[=kcv_prepare]{kcv_prepare()}} once and \code{\link[=kcv_run]{kcv_run()}} for each scheme. Each
-fold of size \eqn{m} adds about \eqn{m^2 n} operations, so a few large
-folds cost the most: with 2 folds, the folds take about as long as the
-factorization.
-
-See \code{\link[=kcv_engine]{kcv_engine()}} for memory requirements.
+triangular inverse, done by R's BLAS and LAPACK libraries, so an optimized
+BLAS (OpenBLAS, Intel MKL, Apple's Accelerate) makes \code{kcv()} many times
+faster than the reference BLAS. Timings, how to switch the BLAS, thread
+settings, the cost of few large folds, and comparisons with other
+packages are in \code{vignette("fastkcv")}; memory requirements are in
+\code{\link[=kcv_engine]{kcv_engine()}}. To cross-validate several fold schemes from one
+factorization, use \code{\link[=kcv_prepare]{kcv_prepare()}} and \code{\link[=kcv_run]{kcv_run()}}.
 }
 
 \section{Ill-conditioned covariance matrices}{
