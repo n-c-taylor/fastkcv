@@ -4,11 +4,13 @@
 # spmodel's "exponential" covariance with de = 1, ie = 0.1, range = 200 is
 # exactly gstat's vgm(1, "Exp", 200, 0.1) (checked: identical matrices), and
 # spcov_initial(known = "given") fixes every parameter, so splm() only
-# estimates the trend by generalized least squares. spmodel's
-# cross-validation is exact too: one inverse of the covariance matrix, then
-# for each fold an update of it for the remaining data, with the trend
-# re-estimated (about n^2 operations per fold for the predictions and more
-# for the standard errors). Above n = 5,000 spmodel switches to local
+# estimates the trend by generalized least squares (ddf = "asymptotic":
+# the default Satterthwaite degrees of freedom, used only for later
+# inference on the trend, are expensive from n = 500 and do not affect the
+# cross-validation). spmodel's cross-validation is exact too: one inverse
+# of the covariance matrix, then for each fold an update of it for the
+# remaining data, with the trend re-estimated (about n^2 operations per
+# fold for the predictions and more for the standard errors). Above n = 5,000 spmodel switches to local
 # approximations by default; the sizes here stay at or below that.
 #
 # Timed end to end: spmodel_s = splm() + loocv()/kcv() with predictions and
@@ -31,7 +33,7 @@ ns <- bench_ns(c(250, 500, 1000, 2000, 5000))
 spmodel_cv <- function(d, folds, se) {
   fit <- spmodel::splm(z ~ 1, data = d, xcoord = "x", ycoord = "y",
     spcov_initial = spmodel::spcov_initial("exponential", de = 1, ie = 0.1,
-      range = 200, known = "given"))
+      range = 200, known = "given"), ddf = "asymptotic")
   if (length(unique(folds)) == nrow(d)) {
     spmodel::loocv(fit, cv_predict = TRUE, se.fit = se, local = FALSE)
   } else {

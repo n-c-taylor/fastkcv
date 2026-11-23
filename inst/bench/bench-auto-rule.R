@@ -87,7 +87,9 @@ for (design in c("uniform", "clustered")) for (n in ns) {
   coords <- as.matrix(d[, c("x", "y")])
   p <- kcv_prepare(z ~ 1, ~ x + y, d, model = sim_model())
   y <- p$inp$y
-  for (m in ms) {
+  # A mean hold-out set of n / 4 or more is not buffered LOO any more (and
+  # at smoke sizes would hold out every point).
+  for (m in ms[ms < n / 4]) {
     r <- round(sqrt(m * 1e6 / (pi * n)), 1)
     tg <- if (n * m > 1e6) withr::with_seed(1, sort(sample(n, 500))) else NULL
     targets <- if (is.null(tg)) seq_len(n) else tg

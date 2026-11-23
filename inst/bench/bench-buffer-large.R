@@ -110,8 +110,11 @@ for (i in seq_len(nrow(runs))) {
   )
 }
 
-# Fallback: a budget that leaves about 10 MB beside Wt.
-max_gb <- (8 * n^2 + 1e7) / 1e9
+# Fallback: a budget that leaves beside Wt only half of what the pair cache
+# for r = 25 needs (about 10 MB at n = 20,000), so the cache cannot fit at
+# any n.
+P <- count_pairs(coords, 25)
+max_gb <- (8 * n^2 + 6 * P) / 1e9
 fb <- tempfile(fileext = ".rds")
 pt <- tempfile(fileext = ".rds")
 r_fb <- run_rss("buffer", n, path = path, radius = 25, method = "auto",
@@ -120,7 +123,6 @@ r_pt <- run_rss("buffer", n, path = path, radius = 25, method = "points",
   save = pt)
 same <- identical(readRDS(fb), readRDS(pt))
 unlink(c(fb, pt))
-P <- count_pairs(coords, 25)
 rows[[length(rows) + 1]] <- data.frame(
   n = n, radius = 25, targets = NA, method = "auto (small budget)",
   method_used = r_fb$method_used, max_gb = max_gb,
